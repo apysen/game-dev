@@ -131,8 +131,6 @@ body{
 <script>
 var canvas, ctx, cellW, cellH;
 var COLS = 5, ROWS = 10;
-var viewWidth = 0;
-var viewHeight = 0;
 var mode = 'trap';
 var gameState = 'menu';
 var score = 0, trapScore = 0;
@@ -220,21 +218,11 @@ function init(){
 function resize(){
   var wrap = document.getElementById('canvas-wrap');
 
-  viewWidth = wrap.clientWidth || window.innerWidth;
-  viewHeight = wrap.clientHeight || window.innerHeight;
+  canvas.width = wrap.clientWidth || window.innerWidth;
+  canvas.height = wrap.clientHeight || window.innerHeight;
 
-  var dpr = window.devicePixelRatio || 1;
-
-  canvas.style.width = viewWidth + 'px';
-  canvas.style.height = viewHeight + 'px';
-
-  viewWidth = viewWidth * dpr;
-  viewHeight = viewHeight * dpr;
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  cellW = viewWidth / COLS;
-  cellH = viewHeight / ROWS;
+  cellW = canvas.width / COLS;
+  cellH = canvas.height / ROWS;
 }
 
 function selectMode(m){
