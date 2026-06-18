@@ -131,6 +131,8 @@ body{
 <script>
 var canvas, ctx, cellW, cellH;
 var COLS = 5, ROWS = 10;
+var viewWidth = 0;
+var viewHeight = 0;
 var mode = 'trap';
 var gameState = 'menu';
 var score = 0, trapScore = 0;
@@ -218,21 +220,21 @@ function init(){
 function resize(){
   var wrap = document.getElementById('canvas-wrap');
 
-  var width = wrap.clientWidth || window.innerWidth;
-  var height = wrap.clientHeight || window.innerHeight;
+  viewWidth = wrap.clientWidth || window.innerWidth;
+  viewHeight = wrap.clientHeight || window.innerHeight;
 
   var dpr = window.devicePixelRatio || 1;
 
-  canvas.style.width = width + 'px';
-  canvas.style.height = height + 'px';
+  canvas.style.width = viewWidth + 'px';
+  canvas.style.height = viewHeight + 'px';
 
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  viewWidth = viewWidth * dpr;
+  viewHeight = viewHeight * dpr;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  cellW = width / COLS;
-  cellH = height / ROWS;
+  cellW = viewWidth / COLS;
+  cellH = viewHeight / ROWS;
 }
 
 function selectMode(m){
@@ -247,7 +249,7 @@ function startGame(){
   document.getElementById('mode-badge').textContent = mode==='trap'?'TRAP MODE':'BATTLE MODE';
   score=0; trapScore=0; scrollPx=0; scrollSpeed=62; paused=false;
   playerCol=2;
-  playerCanvasY = canvas.height - 4*cellH;
+  playerCanvasY = viewHeight - 4*cellH;
   obstacles=[]; popups=[];
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
   for(var r=1; r<ROWS-1; r++) spawnRowAtCanvasY(playerCanvasY - r*cellH);
@@ -302,7 +304,7 @@ function update(dt){
     spawnRowAtCanvasY(-cellH);
     nextSpawnAt += cellH;
   }
-  obstacles = obstacles.filter(function(o){ return o.alive && o.canvasY < canvas.height + cellH; });
+  obstacles = obstacles.filter(function(o){ return o.alive && o.canvasY < viewHeight + cellH; });
   if(mode==='battle'){
     var now=Date.now();
     if(now-lastBattleMoveTime>1500){
@@ -319,7 +321,7 @@ function update(dt){
       }
     }
   }
-  if(playerCanvasY > canvas.height + cellH){loseLife();return;}
+  if(playerCanvasY > viewHeight + cellH){loseLife();return;}
   checkCollision();
   updateHUD();
 }
@@ -347,7 +349,7 @@ function getValidMoves(){
     var nc=playerCol+L_DELTAS[i][0];
     var ny=playerCanvasY+L_DELTAS[i][1]*cellH;
     if(nc<0||nc>=COLS) continue;
-    if(ny>canvas.height+cellH) continue;
+    if(ny>viewHeight+cellH) continue;
     var blocked=false;
     for(var j=0;j<obstacles.length;j++){
       var o=obstacles[j]; if(!o.alive) continue;
@@ -397,7 +399,7 @@ function handleTap(e){
 }
 
 function render(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,viewWidth,viewHeight);
   var tileOffset=scrollPx%cellH;
   var baseRow=Math.floor(scrollPx/cellH);
   for(var r=-1;r<=ROWS+1;r++){
@@ -410,8 +412,8 @@ function render(){
   var moves=getValidMoves();
   for(var vi=0;vi<moves.length;vi++){
     var mv=moves[vi];
-    if(mv.canvasY>canvas.height) continue;
-    var danger=Math.max(0,Math.min(1,mv.canvasY/canvas.height));
+    if(mv.canvasY>viewHeight) continue;
+    var danger=Math.max(0,Math.min(1,mv.canvasY/viewHeight));
     var rr=Math.round(240+(255-240)*danger);
     var gg=Math.round(192+(255-192)*danger);
     var bb=Math.round(64+(255-64)*danger);
@@ -425,7 +427,7 @@ function render(){
   if(mode==='battle'){
     for(var pi=0;pi<obstacles.length;pi++){
       var po=obstacles[pi]; if(!po.alive) continue;
-      var ny=po.canvasY+cellH; if(ny<-cellH||ny>canvas.height) continue;
+      var ny=po.canvasY+cellH; if(ny<-cellH||ny>viewHeight) continue;
       var nc=(po.pieceType==='bishop'||po.pieceType==='queen')&&po.nextCol!==null?po.nextCol:po.col;
       ctx.fillStyle='rgba(220,80,80,0.18)';
       ctx.fillRect(nc*cellW,ny,cellW,cellH);
@@ -436,7 +438,7 @@ function render(){
   var fs=Math.round(cellW*0.55);
   for(var oi=0;oi<obstacles.length;oi++){
     var ob=obstacles[oi]; if(!ob.alive) continue;
-    var oy=ob.canvasY; if(oy<-cellH||oy>canvas.height) continue;
+    var oy=ob.canvasY; if(oy<-cellH||oy>viewHeight) continue;
     ctx.fillStyle=ob.pieceType==='trap'?'rgba(200,50,50,0.35)':'rgba(80,80,180,0.35)';
     ctx.fillRect(ob.col*cellW,oy,cellW,cellH);
     ctx.fillStyle=PIECES[ob.pieceType].color;
@@ -464,11 +466,11 @@ function render(){
   ctx.globalAlpha=1;
   ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
   for(var c2=1;c2<COLS;c2++){
-    ctx.beginPath(); ctx.moveTo(c2*cellW,0); ctx.lineTo(c2*cellW,canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c2*cellW,0); ctx.lineTo(c2*cellW,viewHeight); ctx.stroke();
   }
   for(var r2=-1;r2<=ROWS+1;r2++){
     var ly=r2*cellH+tileOffset;
-    ctx.beginPath(); ctx.moveTo(0,ly); ctx.lineTo(canvas.width,ly); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,ly); ctx.lineTo(viewWidth,ly); ctx.stroke();
   }
 }
 
