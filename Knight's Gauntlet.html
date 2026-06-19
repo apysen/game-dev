@@ -122,7 +122,7 @@ body{
       <input type="text" id="name-input" maxlength="3" placeholder="AAA" autocomplete="off" spellcheck="false">
       <button class="btn" onclick="submitScore()">SAVE SCORE</button>
       <div style="display:flex;gap:10px;">
-        <button class="btn-outline" style="font-size:12px" onclick="skipScore()">Skip</button>
+        <button class="btn-outline" style="font-size:12px" onclick="homeButton()">Home</button>
         <button class="btn-outline" style="font-size:12px" onclick="restartGame()">↺ Restart</button>
       </div>
     </div>
@@ -147,7 +147,7 @@ var lastBattleMoveTime = 0;
 
 var PIECE_TYPES = ['pawn','bishop','rook','queen'];
 var PIECES = {
-  pawn:   {sym:'♟\uFE0E', color:'#e05050'},
+  pawn:   {sym:'♟', color:'#e05050'},
   bishop: {sym:'♝', color:'#9060e0'},
   rook:   {sym:'♜', color:'#4080e0'},
   queen:  {sym:'♛', color:'#e04080'},
@@ -431,7 +431,7 @@ function render(){
     ctx.fillStyle=ob.pieceType==='trap'?'rgba(200,50,50,0.35)':'rgba(80,80,180,0.35)';
     ctx.fillRect(ob.col*cellW,oy,cellW,cellH);
     ctx.fillStyle=PIECES[ob.pieceType].color;
-    ctx.font='bold '+fs+'px serif';
+    ctx.font='bold '+fs+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(PIECES[ob.pieceType].sym,ob.col*cellW+cellW/2,oy+cellH/2+2);
   }
@@ -440,7 +440,7 @@ function render(){
   ctx.fillRect(playerCol*cellW,py,cellW,cellH);
   ctx.shadowColor='#f0c040'; ctx.shadowBlur=14;
   ctx.fillStyle='#f0c040';
-  ctx.font='bold '+Math.round(cellW*0.62)+'px serif';
+  ctx.font='bold '+Math.round(cellW*0.62)+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('♞',playerCol*cellW+cellW/2,py+cellH/2+2);
   ctx.shadowBlur=0;
@@ -482,7 +482,7 @@ function showLeaderboard(){hideAll();lbTab=mode;renderLB();showScreen('lb-screen
 function showLBTab(t){lbTab=t;document.getElementById('lb-tab-trap').classList.toggle('active',t==='trap');document.getElementById('lb-tab-battle').classList.toggle('active',t==='battle');renderLB();}
 function renderLB(){var scores=getScores(lbTab),ul=document.getElementById('lb-list');ul.innerHTML='';if(!scores.length){ul.innerHTML='<li style="color:#555;list-style:none">No scores yet</li>';return;}for(var i=0;i<scores.length;i++){var li=document.createElement('li');li.innerHTML='<span>'+(i+1)+'. '+scores[i].name+'</span><span>'+scores[i].score+'</span>';ul.appendChild(li);}}
 function submitScore(){saveScore(mode,(document.getElementById('name-input').value.trim()||'AAA'),pendingScore);backToMenu();}
-function skipScore(){backToMenu();}
+function homeButton(){backToMenu();}
 function backToMenu(){hideAll();showScreen('menu-screen');}
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){['menu-screen','pause-screen','lb-screen','name-screen'].forEach(function(id){document.getElementById(id).style.display='none';});document.getElementById('hud').style.display='none';}
