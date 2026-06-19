@@ -75,7 +75,7 @@ body{
     <div class="score" id="score-display">0</div>
     <div class="mode-badge" id="mode-badge">TRAP MODE</div>
     <div id="hud-buttons">
-      <button class="btn-sm" onclick="pauseGame()">⏸</button>
+      <button class="btn-sm" onclick="pauseGame()">&#10074;&#10074;</button>
       <button class="btn-sm" onclick="restartGame()">↺</button>
     </div>
   </div>
@@ -147,7 +147,7 @@ var lastBattleMoveTime = 0;
 
 var PIECE_TYPES = ['pawn','bishop','rook','queen'];
 var PIECES = {
-  pawn:   {sym:'♟', color:'#e05050'},
+  pawn:   {sym:'♟\uFE0E', color:'#e05050'},
   bishop: {sym:'♝', color:'#9060e0'},
   rook:   {sym:'♜', color:'#4080e0'},
   queen:  {sym:'♛', color:'#e04080'},
