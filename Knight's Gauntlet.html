@@ -89,13 +89,19 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <!-- LEADERBOARD -->
     <div class="overlay" id="lb-screen" style="display:none">
       <h2>🏆 Leaderboard</h2>
-      <div class="lb-tabs">
-        <button class="lb-tab" id="lb-tab-trap-easy" onclick="showLBTab('trap-easy')">Trap Easy</button>
-        <button class="lb-tab" id="lb-tab-trap-medium" onclick="showLBTab('trap-medium')">Trap Med</button>
-        <button class="lb-tab" id="lb-tab-trap-hard" onclick="showLBTab('trap-hard')">Trap Hard</button>
-        <button class="lb-tab" id="lb-tab-battle-easy" onclick="showLBTab('battle-easy')">Battle Easy</button>
-        <button class="lb-tab" id="lb-tab-battle-medium" onclick="showLBTab('battle-medium')">Battle Med</button>
-        <button class="lb-tab" id="lb-tab-battle-hard" onclick="showLBTab('battle-hard')">Battle Hard</button>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:8px;">
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-size:10px;color:#666;width:36px;text-align:right;margin-right:4px;">TRAP</span>
+          <button class="lb-tab" id="lb-tab-trap-easy" onclick="showLBTab('trap-easy')">Easy</button>
+          <button class="lb-tab" id="lb-tab-trap-medium" onclick="showLBTab('trap-medium')">Med</button>
+          <button class="lb-tab" id="lb-tab-trap-hard" onclick="showLBTab('trap-hard')">Hard</button>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-size:10px;color:#666;width:36px;text-align:right;margin-right:4px;">BATTLE</span>
+          <button class="lb-tab" id="lb-tab-battle-easy" onclick="showLBTab('battle-easy')">Easy</button>
+          <button class="lb-tab" id="lb-tab-battle-medium" onclick="showLBTab('battle-medium')">Med</button>
+          <button class="lb-tab" id="lb-tab-battle-hard" onclick="showLBTab('battle-hard')">Hard</button>
+        </div>
       </div>
       <ul id="lb-list"></ul>
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
