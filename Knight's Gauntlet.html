@@ -9,39 +9,10 @@
 <title>Knight's Gauntlet</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html, body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  touch-action: none;
-  overscroll-behavior: none;
-}
-
-body{
-  background:#1a1a2e;
-  color:#eee;
-  font-family:system-ui,sans-serif;
-  height:100dvh;
-  overflow:hidden;
-  display:flex;
-  justify-content:center;
-}
-
-#screen{
-  width:100%;
-  max-width:400px;
-  height:100dvh;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  position:relative;
-  overflow:hidden;
-}
-
-#canvas-wrap,
-#gc{
-  touch-action:none;
-}
+html,body{width:100%;height:100%;overflow:hidden;touch-action:none;overscroll-behavior:none;}
+body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dvh;overflow:hidden;display:flex;justify-content:center;}
+#screen{width:100%;max-width:400px;height:100dvh;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
+#canvas-wrap,#gc{touch-action:none;}
 #hud{width:100%;display:flex;justify-content:space-between;align-items:center;padding:12px 16px 6px;z-index:10;flex-shrink:0;}
 #hud .score{font-size:22px;font-weight:700;color:#f0c040;}
 #hud .mode-badge{font-size:11px;background:#333;border-radius:12px;padding:4px 10px;color:#aaa;}
@@ -59,11 +30,15 @@ body{
 .mode-row{display:flex;gap:12px;}
 .mode-btn{background:#16213e;color:#aaa;border:2px solid #333;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;}
 .mode-btn.active{border-color:#f0c040;color:#f0c040;}
+.diff-row{display:flex;gap:8px;}
+.diff-btn{background:#16213e;color:#aaa;border:2px solid #333;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;}
+.diff-btn.active{border-color:#f0c040;color:#f0c040;}
+.diff-section{display:flex;flex-direction:column;align-items:center;gap:6px;}
 #lb-list{width:260px;padding:0;}
 #lb-list li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;font-size:13px;color:#ccc;list-style:none;}
 #lb-list li:first-child{color:#f0c040;font-weight:700;}
-.lb-tabs{display:flex;gap:8px;margin-bottom:8px;}
-.lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:5px 14px;font-size:12px;cursor:pointer;}
+.lb-tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;justify-content:center;}
+.lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;}
 .lb-tab.active{border-color:#f0c040;color:#f0c040;}
 #name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:160px;text-transform:uppercase;}
 #name-input::placeholder{color:#555;}
@@ -91,6 +66,14 @@ body{
         <button class="mode-btn active" id="btn-trap" onclick="selectMode('trap')">⚔ Trap<br><span style="font-size:10px;font-weight:400;">Avoid obstacles</span></button>
         <button class="mode-btn" id="btn-battle" onclick="selectMode('battle')">♟ Battle<br><span style="font-size:10px;font-weight:400;">Capture enemies</span></button>
       </div>
+      <div class="diff-section" id="diff-section">
+        <p style="font-size:11px;color:#666;text-align:center;" id="diff-label">DIFFICULTY</p>
+        <div class="diff-row">
+          <button class="diff-btn" id="diff-easy" onclick="selectDiff('easy')">🟢 Easy</button>
+          <button class="diff-btn active" id="diff-medium" onclick="selectDiff('medium')">🟡 Medium</button>
+          <button class="diff-btn" id="diff-hard" onclick="selectDiff('hard')">🔴 Hard</button>
+        </div>
+      </div>
       <button class="btn" onclick="startGame()">PLAY</button>
       <button class="btn-outline" onclick="showLeaderboard()">🏆 Leaderboard</button>
     </div>
@@ -107,8 +90,12 @@ body{
     <div class="overlay" id="lb-screen" style="display:none">
       <h2>🏆 Leaderboard</h2>
       <div class="lb-tabs">
-        <button class="lb-tab active" id="lb-tab-trap" onclick="showLBTab('trap')">Trap</button>
-        <button class="lb-tab" id="lb-tab-battle" onclick="showLBTab('battle')">Battle</button>
+        <button class="lb-tab" id="lb-tab-trap-easy" onclick="showLBTab('trap-easy')">Trap Easy</button>
+        <button class="lb-tab" id="lb-tab-trap-medium" onclick="showLBTab('trap-medium')">Trap Med</button>
+        <button class="lb-tab" id="lb-tab-trap-hard" onclick="showLBTab('trap-hard')">Trap Hard</button>
+        <button class="lb-tab" id="lb-tab-battle-easy" onclick="showLBTab('battle-easy')">Battle Easy</button>
+        <button class="lb-tab" id="lb-tab-battle-medium" onclick="showLBTab('battle-medium')">Battle Med</button>
+        <button class="lb-tab" id="lb-tab-battle-hard" onclick="showLBTab('battle-hard')">Battle Hard</button>
       </div>
       <ul id="lb-list"></ul>
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
@@ -122,7 +109,7 @@ body{
       <input type="text" id="name-input" maxlength="3" placeholder="AAA" autocomplete="off" spellcheck="false">
       <button class="btn" onclick="submitScore()">SAVE SCORE</button>
       <div style="display:flex;gap:10px;">
-        <button class="btn-outline" style="font-size:12px" onclick="homeButton()">Home</button>
+        <button class="btn-outline" style="font-size:12px" onclick="backToMenu()">Home</button>
         <button class="btn-outline" style="font-size:12px" onclick="restartGame()">↺ Restart</button>
       </div>
     </div>
@@ -132,10 +119,11 @@ body{
 var canvas, ctx, cellW, cellH;
 var COLS = 5, ROWS = 10;
 var mode = 'trap';
+var difficulty = 'medium';
 var gameState = 'menu';
 var score = 0, trapScore = 0;
 var animFrame = null, lastTime = null;
-var pendingScore = 0, lbTab = 'trap';
+var pendingScore = 0, lbTab = 'trap-medium';
 var paused = false;
 
 var scrollPx = 0, scrollSpeed = 62;
@@ -144,6 +132,20 @@ var obstacles = [];
 var popups = [];
 var nextSpawnAt = 0, spawnIndex = 0;
 var lastBattleMoveTime = 0;
+var battleMoveInterval = 2000; // ms between enemy moves, set on startGame
+
+// Trap: [startSpeed, maxSpeed]
+var TRAP_DIFF = {
+  easy:   [70,  180],
+  medium: [110, 240],
+  hard:   [150, 300]
+};
+// Battle: move interval in ms (slower = easier)
+var BATTLE_DIFF = {
+  easy:   2500,
+  medium: 1500,
+  hard:   800
+};
 
 var PIECE_TYPES = ['pawn','bishop','rook','queen'];
 var PIECES = {
@@ -159,100 +161,90 @@ var L_DELTAS = [[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[1,-2],[-1,2],[1,2]];
 var audioCtx = null;
 function unlockAudio(){
   try{
-    if(!audioCtx){
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    if(audioCtx.state === 'suspended'){
-      audioCtx.resume();
-    }
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
   } catch(e){}
 }
 function playMoveSound(){
-  try {
+  try{
     if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    var now = audioCtx.currentTime;
-    var sr = audioCtx.sampleRate;
-    var bufSize = Math.floor(sr * 0.15);
-    var buf = audioCtx.createBuffer(1, bufSize, sr);
-    var data = buf.getChannelData(0);
-    for(var i=0;i<bufSize;i++){
-      var env = Math.exp(-i / (sr * 0.025));
-      data[i] = (Math.random()*2-1) * env;
-    }
-    var noise = audioCtx.createBufferSource();
-    noise.buffer = buf;
-    var bp = audioCtx.createBiquadFilter();
-    bp.type = 'bandpass'; bp.frequency.value = 600; bp.Q.value = 0.6;
-    var shelf = audioCtx.createBiquadFilter();
-    shelf.type = 'highshelf'; shelf.frequency.value = 3000; shelf.gain.value = -10;
-    var g = audioCtx.createGain();
-    g.gain.setValueAtTime(0.35, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    var now=audioCtx.currentTime, sr=audioCtx.sampleRate;
+    var bufSize=Math.floor(sr*0.15);
+    var buf=audioCtx.createBuffer(1,bufSize,sr);
+    var data=buf.getChannelData(0);
+    for(var i=0;i<bufSize;i++) data[i]=(Math.random()*2-1)*Math.exp(-i/(sr*0.025));
+    var noise=audioCtx.createBufferSource(); noise.buffer=buf;
+    var bp=audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600; bp.Q.value=0.6;
+    var shelf=audioCtx.createBiquadFilter(); shelf.type='highshelf'; shelf.frequency.value=3000; shelf.gain.value=-10;
+    var g=audioCtx.createGain();
+    g.gain.setValueAtTime(0.35,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.15);
     noise.connect(bp); bp.connect(shelf); shelf.connect(g); g.connect(audioCtx.destination);
-    noise.start(now); noise.stop(now + 0.15);
+    noise.start(now); noise.stop(now+0.15);
   } catch(e){}
 }
 
 function init(){
-  canvas = document.getElementById('gc');
-  ctx = canvas.getContext('2d');
-
+  canvas=document.getElementById('gc');
+  ctx=canvas.getContext('2d');
   resize();
-
-  window.addEventListener('resize', resize);
-
-  canvas.addEventListener('pointerdown', function(e){
-    e.preventDefault();
-    unlockAudio();
-    handleTap(e);
+  window.addEventListener('resize',resize);
+  canvas.addEventListener('pointerdown',function(e){
+    e.preventDefault(); unlockAudio(); handleTap(e);
   });
-
-  document.addEventListener('visibilitychange', function(){
-    if(document.hidden && gameState === 'playing'){
-      pauseGame();
-    }
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden&&gameState==='playing') pauseGame();
   });
 }
 
 function resize(){
-  var wrap = document.getElementById('canvas-wrap');
-
-  canvas.width = wrap.clientWidth || window.innerWidth;
-  canvas.height = wrap.clientHeight || window.innerHeight;
-
-  cellW = canvas.width / COLS;
-  cellH = canvas.height / ROWS;
+  var wrap=document.getElementById('canvas-wrap');
+  canvas.width=wrap.clientWidth||window.innerWidth;
+  canvas.height=wrap.clientHeight||window.innerHeight;
+  cellW=canvas.width/COLS;
+  cellH=canvas.height/ROWS;
 }
 
 function selectMode(m){
-  mode = m;
-  document.getElementById('btn-trap').classList.toggle('active', m==='trap');
-  document.getElementById('btn-battle').classList.toggle('active', m==='battle');
+  mode=m;
+  document.getElementById('btn-trap').classList.toggle('active',m==='trap');
+  document.getElementById('btn-battle').classList.toggle('active',m==='battle');
+  // Difficulty section visible for both modes
+  document.getElementById('diff-label').textContent = m==='trap' ? 'SCROLL SPEED' : 'ENEMY SPEED';
 }
 
+function selectDiff(d){
+  difficulty=d;
+  ['easy','medium','hard'].forEach(function(x){
+    document.getElementById('diff-'+x).classList.toggle('active',x===d);
+  });
+}
+
+function getLBKey(){ return mode+'-'+difficulty; }
+
 function startGame(){
-  resize();
-  hideAll();
-  document.getElementById('hud').style.display = 'flex';
-  document.getElementById('mode-badge').textContent = mode==='trap'?'TRAP MODE':'BATTLE MODE';
-  score=0; trapScore=0; scrollPx=0; scrollSpeed=100; paused=false;
+  resize(); hideAll();
+  document.getElementById('hud').style.display='flex';
+  var labels={easy:'Easy',medium:'Medium',hard:'Hard'};
+  document.getElementById('mode-badge').textContent=(mode==='trap'?'TRAP':'BATTLE')+' · '+labels[difficulty];
+  score=0; trapScore=0; scrollPx=0; paused=false;
+  scrollSpeed = mode==='trap' ? TRAP_DIFF[difficulty][0] : 70;
+  battleMoveInterval = BATTLE_DIFF[difficulty];
   playerCol=2;
-  playerCanvasY = canvas.height - 4*cellH;
+  playerCanvasY=canvas.height-4*cellH;
   obstacles=[]; popups=[];
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
-  for(var r=1; r<ROWS-1; r++) spawnRowAtCanvasY(playerCanvasY - r*cellH);
-  nextSpawnAt = scrollPx + cellH;
+  for(var r=1;r<ROWS-1;r++) spawnRowAtCanvasY(playerCanvasY-r*cellH);
+  nextSpawnAt=scrollPx+cellH;
   gameState='playing';
   updateHUD();
   if(animFrame) cancelAnimationFrame(animFrame);
-  animFrame = requestAnimationFrame(loop);
+  animFrame=requestAnimationFrame(loop);
 }
 
 function spawnRowAtCanvasY(cy){
   if(mode==='trap'){
-    var progress = Math.min(1, scrollPx / (cellH * 40));
-    var numOpen = Math.random() < progress ? 2 : 3;
+    var progress=Math.min(1,scrollPx/(cellH*40));
+    var numOpen=Math.random()<progress?2:3;
     var dcs=[-2,-1,1,2], reachable=[];
     for(var i=0;i<dcs.length;i++){ var nc=playerCol+dcs[i]; if(nc>=0&&nc<COLS) reachable.push(nc); }
     reachable.sort(function(){return Math.random()-0.5;});
@@ -271,32 +263,32 @@ function spawnRowAtCanvasY(cy){
 
 function loop(ts){
   if(gameState!=='playing') return;
-  animFrame = requestAnimationFrame(loop);
-  var dt = lastTime ? Math.min((ts-lastTime)/1000, 0.1) : 0.016;
-  lastTime = ts;
-  update(dt);
-  render();
+  animFrame=requestAnimationFrame(loop);
+  var dt=lastTime?Math.min((ts-lastTime)/1000,0.1):0.016;
+  lastTime=ts;
+  update(dt); render();
 }
 
 function update(dt){
-  var delta = scrollSpeed * dt;
-  scrollPx += delta;
-  scrollSpeed = Math.min(200, 62 + scrollPx*0.01);
-  playerCanvasY += delta;
-  for(var i=0;i<obstacles.length;i++) obstacles[i].canvasY += delta;
-  for(var pi=0;pi<popups.length;pi++) popups[pi].canvasY += delta;
+  var delta=scrollSpeed*dt;
+  scrollPx+=delta;
+  if(mode==='trap'){
+    var maxSpd=TRAP_DIFF[difficulty][1];
+    scrollSpeed=Math.min(maxSpd, TRAP_DIFF[difficulty][0]+scrollPx*0.01);
+  }
+  playerCanvasY+=delta;
+  for(var i=0;i<obstacles.length;i++) obstacles[i].canvasY+=delta;
+  for(var pi=0;pi<popups.length;pi++) popups[pi].canvasY+=delta;
   for(var p=popups.length-1;p>=0;p--){
-    popups[p].alpha -= dt*1.8;
+    popups[p].alpha-=dt*1.8;
     if(popups[p].alpha<=0) popups.splice(p,1);
   }
-  while(scrollPx >= nextSpawnAt){
-    spawnRowAtCanvasY(-cellH);
-    nextSpawnAt += cellH;
-  }
-  obstacles = obstacles.filter(function(o){ return o.alive && o.canvasY < canvas.height + cellH; });
+  while(scrollPx>=nextSpawnAt){ spawnRowAtCanvasY(-cellH); nextSpawnAt+=cellH; }
+  obstacles=obstacles.filter(function(o){ return o.alive&&o.canvasY<canvas.height+cellH; });
+
   if(mode==='battle'){
     var now=Date.now();
-    if(now-lastBattleMoveTime>1500){
+    if(now-lastBattleMoveTime>=battleMoveInterval){
       lastBattleMoveTime=now;
       for(var j=0;j<obstacles.length;j++){
         var o=obstacles[j]; if(!o.alive) continue;
@@ -310,9 +302,8 @@ function update(dt){
       }
     }
   }
-  if(playerCanvasY > canvas.height + cellH){loseLife();return;}
-  checkCollision();
-  updateHUD();
+  if(playerCanvasY>canvas.height+cellH){loseLife();return;}
+  checkCollision(); updateHUD();
 }
 
 function checkCollision(){
@@ -355,9 +346,7 @@ function getValidMoves(){
 function handleTap(e){
   if(gameState!=='playing') return;
   var rect=canvas.getBoundingClientRect();
-  var cx = e.clientX;
-  var cy = e.clientY;
-  var tx=cx-rect.left, ty=cy-rect.top;
+  var tx=e.clientX-rect.left, ty=e.clientY-rect.top;
   var tc=Math.floor(tx/cellW);
   var moves=getValidMoves();
   var move=null, bestDist=cellH*1.2;
@@ -383,14 +372,12 @@ function handleTap(e){
     score=trapScore;
   }
   playerCol=move.col; playerCanvasY=move.canvasY;
-  playMoveSound();
-  checkCollision(); updateHUD();
+  playMoveSound(); checkCollision(); updateHUD();
 }
 
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  var tileOffset=scrollPx%cellH;
-  var baseRow=Math.floor(scrollPx/cellH);
+  var tileOffset=scrollPx%cellH, baseRow=Math.floor(scrollPx/cellH);
   for(var r=-1;r<=ROWS+1;r++){
     var ry=r*cellH+tileOffset, worldRow=baseRow+r;
     for(var c=0;c<COLS;c++){
@@ -398,32 +385,32 @@ function render(){
       ctx.fillRect(c*cellW,ry,cellW,cellH);
     }
   }
+
+  // Valid move highlights
   var moves=getValidMoves();
   for(var vi=0;vi<moves.length;vi++){
     var mv=moves[vi];
     if(mv.canvasY>canvas.height) continue;
     var danger=Math.max(0,Math.min(1,mv.canvasY/canvas.height));
-    var rr=Math.round(240+(255-240)*danger);
-    var gg=Math.round(192+(255-192)*danger);
-    var bb=Math.round(64+(255-64)*danger);
+    var rr=Math.round(240+(255-240)*danger), gg=Math.round(192+(255-192)*danger), bb=Math.round(64+(255-64)*danger);
     ctx.fillStyle='rgba('+rr+','+gg+','+bb+',0.25)';
     ctx.fillRect(mv.col*cellW,mv.canvasY,cellW,cellH);
     ctx.fillStyle='rgba('+rr+','+gg+','+bb+',0.7)';
-    ctx.beginPath();
-    ctx.arc(mv.col*cellW+cellW/2,mv.canvasY+cellH/2,7,0,Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(mv.col*cellW+cellW/2,mv.canvasY+cellH/2,7,0,Math.PI*2); ctx.fill();
   }
+
+  // Battle next-move previews
   if(mode==='battle'){
     for(var pi=0;pi<obstacles.length;pi++){
       var po=obstacles[pi]; if(!po.alive) continue;
       var ny=po.canvasY+cellH; if(ny<-cellH||ny>canvas.height) continue;
       var nc=(po.pieceType==='bishop'||po.pieceType==='queen')&&po.nextCol!==null?po.nextCol:po.col;
-      ctx.fillStyle='rgba(220,80,80,0.18)';
-      ctx.fillRect(nc*cellW,ny,cellW,cellH);
-      ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
-      ctx.strokeRect(nc*cellW+1,ny+1,cellW-2,cellH-2);
+      ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(nc*cellW,ny,cellW,cellH);
+      ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5; ctx.strokeRect(nc*cellW+1,ny+1,cellW-2,cellH-2);
     }
   }
+
+  // Obstacles
   var fs=Math.round(cellW*0.55);
   for(var oi=0;oi<obstacles.length;oi++){
     var ob=obstacles[oi]; if(!ob.alive) continue;
@@ -435,35 +422,60 @@ function render(){
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(PIECES[ob.pieceType].sym,ob.col*cellW+cellW/2,oy+cellH/2+2);
   }
+
+  // Player
   var py=playerCanvasY;
-  ctx.fillStyle='rgba(240,192,64,0.2)';
-  ctx.fillRect(playerCol*cellW,py,cellW,cellH);
-  ctx.shadowColor='#f0c040'; ctx.shadowBlur=14;
-  ctx.fillStyle='#f0c040';
+  ctx.fillStyle='rgba(240,192,64,0.2)'; ctx.fillRect(playerCol*cellW,py,cellW,cellH);
+  ctx.shadowColor='#f0c040'; ctx.shadowBlur=14; ctx.fillStyle='#f0c040';
   ctx.font='bold '+Math.round(cellW*0.62)+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('♞',playerCol*cellW+cellW/2,py+cellH/2+2);
   ctx.shadowBlur=0;
+
+  // Popups
   for(var pp=0;pp<popups.length;pp++){
     var p=popups[pp];
-    ctx.globalAlpha=Math.max(0,p.alpha);
-    ctx.fillStyle='#f0c040';
+    ctx.globalAlpha=Math.max(0,p.alpha); ctx.fillStyle='#f0c040';
     ctx.font='bold '+Math.round(cellW*0.35)+'px system-ui';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(p.text,p.col*cellW+cellW/2,p.canvasY);
   }
   ctx.globalAlpha=1;
+
+  // Grid lines
   ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
-  for(var c2=1;c2<COLS;c2++){
-    ctx.beginPath(); ctx.moveTo(c2*cellW,0); ctx.lineTo(c2*cellW,canvas.height); ctx.stroke();
-  }
-  for(var r2=-1;r2<=ROWS+1;r2++){
-    var ly=r2*cellH+tileOffset;
-    ctx.beginPath(); ctx.moveTo(0,ly); ctx.lineTo(canvas.width,ly); ctx.stroke();
+  for(var c2=1;c2<COLS;c2++){ctx.beginPath();ctx.moveTo(c2*cellW,0);ctx.lineTo(c2*cellW,canvas.height);ctx.stroke();}
+  for(var r2=-1;r2<=ROWS+1;r2++){var ly=r2*cellH+tileOffset;ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(canvas.width,ly);ctx.stroke();}
+
+  // Battle mode: enemy move timer progress bar
+  if(mode==='battle'&&gameState==='playing'){
+    var elapsed=Date.now()-lastBattleMoveTime;
+    var progress=Math.min(1,elapsed/battleMoveInterval);
+    var barW=canvas.width*0.55;
+    var barH=6;
+    var barX=(canvas.width-barW)/2;
+    var barY=canvas.height-10;
+    // Track
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,3); ctx.fill();
+    // Fill — interpolate green→yellow→red
+    var r3,g3,b3;
+    if(progress<0.5){
+      r3=Math.round(progress*2*240); g3=200; b3=50;
+    } else {
+      r3=240; g3=Math.round(200*(1-(progress-0.5)*2)); b3=50;
+    }
+    ctx.fillStyle='rgb('+r3+','+g3+','+b3+')';
+    ctx.beginPath(); ctx.roundRect(barX,barY,barW*progress,barH,3); ctx.fill();
+    // Label
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.font='9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText('ENEMY MOVE',canvas.width/2,barY-2);
   }
 }
 
 function updateHUD(){ document.getElementById('score-display').textContent=score; }
+
 function pauseGame(){
   if(gameState!=='playing') return;
   gameState='paused';
@@ -473,19 +485,48 @@ function pauseGame(){
 function resumeGame(){
   document.getElementById('pause-screen').style.display='none';
   gameState='playing'; lastTime=null;
+  // Adjust lastBattleMoveTime so bar doesn't jump on resume
+  lastBattleMoveTime=Date.now()-(battleMoveInterval*0.5);
   animFrame=requestAnimationFrame(loop);
 }
 function restartGame(){ startGame(); }
-function getScores(m){try{return JSON.parse(localStorage.getItem('kg_'+m)||'[]');}catch(e){return[];}}
-function saveScore(m,name,s){var arr=getScores(m);arr.push({name:(name||'???').toUpperCase().slice(0,3),score:s});arr.sort(function(a,b){return b.score-a.score;});localStorage.setItem('kg_'+m,JSON.stringify(arr.slice(0,10)));}
-function showLeaderboard(){hideAll();lbTab=mode;renderLB();showScreen('lb-screen');}
-function showLBTab(t){lbTab=t;document.getElementById('lb-tab-trap').classList.toggle('active',t==='trap');document.getElementById('lb-tab-battle').classList.toggle('active',t==='battle');renderLB();}
-function renderLB(){var scores=getScores(lbTab),ul=document.getElementById('lb-list');ul.innerHTML='';if(!scores.length){ul.innerHTML='<li style="color:#555;list-style:none">No scores yet</li>';return;}for(var i=0;i<scores.length;i++){var li=document.createElement('li');li.innerHTML='<span>'+(i+1)+'. '+scores[i].name+'</span><span>'+scores[i].score+'</span>';ul.appendChild(li);}}
-function submitScore(){saveScore(mode,(document.getElementById('name-input').value.trim()||'AAA'),pendingScore);backToMenu();}
-function homeButton(){backToMenu();}
+
+function getScores(key){try{return JSON.parse(localStorage.getItem('kg_'+key)||'[]');}catch(e){return[];}}
+function saveScore(key,name,s){
+  var arr=getScores(key);
+  arr.push({name:(name||'???').toUpperCase().slice(0,3),score:s});
+  arr.sort(function(a,b){return b.score-a.score;});
+  localStorage.setItem('kg_'+key,JSON.stringify(arr.slice(0,10)));
+}
+function showLeaderboard(){
+  hideAll(); lbTab=getLBKey();
+  document.querySelectorAll('.lb-tab').forEach(function(el){el.classList.remove('active');});
+  var el=document.getElementById('lb-tab-'+lbTab); if(el) el.classList.add('active');
+  renderLB(); showScreen('lb-screen');
+}
+function showLBTab(key){
+  lbTab=key;
+  document.querySelectorAll('.lb-tab').forEach(function(el){el.classList.remove('active');});
+  var el=document.getElementById('lb-tab-'+key); if(el) el.classList.add('active');
+  renderLB();
+}
+function renderLB(){
+  var scores=getScores(lbTab),ul=document.getElementById('lb-list');
+  ul.innerHTML='';
+  if(!scores.length){ul.innerHTML='<li style="color:#555;list-style:none">No scores yet</li>';return;}
+  for(var i=0;i<scores.length;i++){
+    var li=document.createElement('li');
+    li.innerHTML='<span>'+(i+1)+'. '+scores[i].name+'</span><span>'+scores[i].score+'</span>';
+    ul.appendChild(li);
+  }
+}
+function submitScore(){saveScore(getLBKey(),(document.getElementById('name-input').value.trim()||'AAA'),pendingScore);backToMenu();}
 function backToMenu(){hideAll();showScreen('menu-screen');}
 function showScreen(id){document.getElementById(id).style.display='flex';}
-function hideAll(){['menu-screen','pause-screen','lb-screen','name-screen'].forEach(function(id){document.getElementById(id).style.display='none';});document.getElementById('hud').style.display='none';}
+function hideAll(){
+  ['menu-screen','pause-screen','lb-screen','name-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
+  document.getElementById('hud').style.display='none';
+}
 window.addEventListener('load',init);
 </script>
 </body>
