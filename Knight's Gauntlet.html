@@ -119,6 +119,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <ul id="lb-list"></ul>
       <p class="fineprint" id="lb-online-note">Online scores are Hard mode only.</p>
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
+      <p style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:100%;text-align:center;font-size:10px;color:#666;margin:0;"><a id="report-link" href="#" style="color:#888;text-decoration:underline;">Report an inappropriate name</a></p>
     </div>
 
     <!-- GAME OVER -->
@@ -127,6 +128,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <p id="final-score-txt" style="font-size:26px;font-weight:700;color:#f0c040;"></p>
       <p>Enter your name</p>
       <input type="text" id="name-input" maxlength="7" placeholder="NAME" autocomplete="off" spellcheck="false">
+      <p id="name-error" style="font-size:12px;color:#e05050;display:none;">Please choose a different name.</p>
       <button class="btn" onclick="submitScore()">SAVE SCORE</button>
       <p class="fineprint">Only your best Hard mode score appears on the online leaderboard.</p>
       <div style="display:flex;gap:10px;">
@@ -169,6 +171,35 @@ var QUEEN_ADJ = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 
 function getSavedName(){ return localStorage.getItem('kg_player_name')||''; }
 function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
+
+// ── Name moderation (App Store UGC compliance) ─────────────────────────────
+// Contact for content reports
+var REPORT_EMAIL = 'apys502@gmail.com';
+
+// Base list of disallowed substrings (lowercased). Catches the word even when
+// padded with numbers/symbols by stripping non-letters first. Expand as needed.
+var BANNED_WORDS = [
+  'fuck','shit','bitch','cunt','dick','cock','pussy','asshole','bastard',
+  'slut','whore','fag','faggot','nigger','nigga','retard','rape','nazi',
+  'hitler','kike','spic','chink','wank','twat','prick','douche','jizz',
+  'cum','penis','vagina','boob','tits','sex','porn','anus','butt','damn'
+];
+// Common leetspeak substitutions normalized before checking
+function normalizeForFilter(s){
+  return s.toLowerCase()
+    .replace(/[@4]/g,'a').replace(/[3]/g,'e').replace(/[1!|]/g,'i')
+    .replace(/[0]/g,'o').replace(/[5$]/g,'s').replace(/[7]/g,'t')
+    .replace(/[^a-z]/g,''); // strip spaces/numbers/symbols
+}
+function isNameAllowed(name){
+  if(!name) return false;
+  var n=normalizeForFilter(name);
+  if(n.length===0) return false;
+  for(var i=0;i<BANNED_WORDS.length;i++){
+    if(n.indexOf(BANNED_WORDS[i])!==-1) return false;
+  }
+  return true;
+}
 
 // ── Supabase config ────────────────────────────────────────────────────────
 var SUPABASE_URL = 'https://vpdusjnqljkeccxtfgqn.supabase.co';
@@ -214,6 +245,18 @@ function init(){
   });
   document.addEventListener('visibilitychange',function(){
     if(document.hidden&&gameState==='playing') pauseGame();
+  });
+  var rl=document.getElementById('report-link');
+  if(rl) rl.addEventListener('click',function(e){
+    e.preventDefault();
+    var subject=encodeURIComponent("Knight's Gauntlet — report a name");
+    var body=encodeURIComponent(
+      "Please describe the inappropriate name you'd like reported:\n\n"+
+      "Name shown: \n"+
+      "Leaderboard: "+lbTab+"\n\n"+
+      "We review reports and remove names that violate our guidelines."
+    );
+    window.location.href='mailto:'+REPORT_EMAIL+'?subject='+subject+'&body='+body;
   });
 }
 
@@ -451,6 +494,8 @@ function loseLife(){
   document.getElementById('final-score-txt').textContent='Score: '+score;
   var ni=document.getElementById('name-input');
   if(ni) ni.value=getSavedName();
+  var ne=document.getElementById('name-error');
+  if(ne) ne.style.display='none';
   showScreen('name-screen');
 }
 
@@ -669,6 +714,12 @@ function fetchOnlineScores(key){
 
 function submitScore(){
   var name=(document.getElementById('name-input').value.trim()||'AAA').slice(0,7);
+  var err=document.getElementById('name-error');
+  if(!isNameAllowed(name)){
+    if(err) err.style.display='block';
+    return; // block submission; let the player edit
+  }
+  if(err) err.style.display='none';
   setSavedName(name);
   saveScore(getLBKey(),name,pendingScore);
   backToMenu();
