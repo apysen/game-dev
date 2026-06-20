@@ -34,11 +34,14 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 .diff-btn{background:#16213e;color:#aaa;border:2px solid #333;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;}
 .diff-btn.active{border-color:#f0c040;color:#f0c040;}
 .diff-section{display:flex;flex-direction:column;align-items:center;gap:6px;}
-#lb-list{width:260px;padding:0;}
-#lb-list li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;font-size:13px;color:#ccc;list-style:none;}
+#lb-list{width:280px;padding:0;}
+#lb-list li{display:flex;justify-content:space-between;padding:9px 4px;border-bottom:1px solid #333;font-size:16px;color:#ccc;list-style:none;}
 #lb-list li:first-child{color:#f0c040;font-weight:700;}
-.lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;}
+.lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;}
 .lb-tab.active{border-color:#f0c040;color:#f0c040;}
+.lb-source-row{display:flex;gap:10px;margin-bottom:10px;}
+.lb-source-tab{background:#16213e;color:#aaa;border:2px solid #333;border-radius:10px;padding:8px 22px;font-size:15px;font-weight:700;cursor:pointer;}
+.lb-source-tab.active{border-color:#f0c040;color:#f0c040;}
 #name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
 #name-input::placeholder{color:#555;}
 .fineprint{font-size:10px;color:#666;max-width:240px;line-height:1.4;text-align:center;}
@@ -89,7 +92,12 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <!-- LEADERBOARD -->
     <div class="overlay" id="lb-screen" style="display:none">
       <h2>🏆 Leaderboard</h2>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:center;margin-bottom:8px;">
+      <div class="lb-source-row">
+        <button class="lb-source-tab" id="lbsrc-personal" onclick="selectLBSource('personal')">Personal</button>
+        <button class="lb-source-tab active" id="lbsrc-online" onclick="selectLBSource('online')">Online</button>
+      </div>
+      <!-- Personal: full grid -->
+      <div id="lb-cats-personal" style="display:none;flex-direction:column;gap:6px;align-items:center;margin-bottom:8px;">
         <div style="display:flex;gap:4px;align-items:center;">
           <span style="font-size:10px;color:#666;width:36px;text-align:right;margin-right:4px;">TRAP</span>
           <button class="lb-tab" id="lb-tab-trap-easy" onclick="showLBTab('trap-easy')">Easy</button>
@@ -103,8 +111,13 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
           <button class="lb-tab" id="lb-tab-battle-hard" onclick="showLBTab('battle-hard')">Hard</button>
         </div>
       </div>
+      <!-- Online: Trap / Battle only (Hard mode) -->
+      <div id="lb-cats-online" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        <button class="lb-source-tab" id="lbo-trap" onclick="showLBTab('trap-hard')">⚔ Trap</button>
+        <button class="lb-source-tab" id="lbo-battle" onclick="showLBTab('battle-hard')">♟ Battle</button>
+      </div>
       <ul id="lb-list"></ul>
-      <p class="fineprint">Online leaderboard shows Hard mode only.</p>
+      <p class="fineprint" id="lb-online-note">Online scores are Hard mode only.</p>
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
     </div>
 
@@ -614,8 +627,9 @@ function resumeGame(){
 }
 function restartGame(){ startGame(); }
 
-// ── Leaderboard (Supabase online + local fallback) ─────────────────────────
+// ── Leaderboard (Supabase online + local Personal) ─────────────────────────
 var lbCache={}, lbLoading=false;
+var lbSource='online'; // 'online' | 'personal'
 
 function getLocalScores(key){try{return JSON.parse(localStorage.getItem('kg_'+key)||'[]');}catch(e){return[];}}
 
@@ -629,12 +643,11 @@ function saveScore(key,name,s){
     fetch(SUPABASE_URL+'/rest/v1/scores',{
       method:'POST', headers:sbHeaders(),
       body:JSON.stringify({name:name,score:s,category:key})
-    }).then(function(){ if(lbTab===key) fetchOnlineScores(key); }).catch(function(){});
+    }).then(function(){ if(lbSource==='online'&&lbTab===key) fetchOnlineScores(key); }).catch(function(){});
   }
 }
 
 function fetchOnlineScores(key){
-  if(!/-hard$/.test(key)){ lbCache[key]=null; renderLB(); return; }
   lbLoading=true; renderLB();
   var url=SUPABASE_URL+'/rest/v1/scores?category=eq.'+encodeURIComponent(key)+'&select=name,score&order=score.desc&limit=100';
   fetch(url,{headers:sbHeaders()})
@@ -660,31 +673,82 @@ function submitScore(){
   saveScore(getLBKey(),name,pendingScore);
   backToMenu();
 }
-function showLeaderboard(){
-  hideAll(); lbTab=getLBKey();
-  document.querySelectorAll('.lb-tab').forEach(function(el){el.classList.remove('active');});
-  var el=document.getElementById('lb-tab-'+lbTab); if(el) el.classList.add('active');
-  showScreen('lb-screen');
-  fetchOnlineScores(lbTab);
+
+function selectLBSource(src){
+  lbSource=src;
+  document.getElementById('lbsrc-personal').classList.toggle('active',src==='personal');
+  document.getElementById('lbsrc-online').classList.toggle('active',src==='online');
+  document.getElementById('lb-cats-personal').style.display = src==='personal' ? 'flex' : 'none';
+  document.getElementById('lb-cats-online').style.display   = src==='online'   ? 'flex' : 'none';
+  document.getElementById('lb-online-note').style.display   = src==='online'   ? 'block' : 'none';
+  if(src==='online'&&!/-hard$/.test(lbTab)) lbTab=mode+'-hard';
+  highlightCatTab();
+  refreshLB();
 }
+
+function showLeaderboard(){
+  hideAll();
+  lbSource='online';
+  document.getElementById('lbsrc-personal').classList.remove('active');
+  document.getElementById('lbsrc-online').classList.add('active');
+  document.getElementById('lb-cats-personal').style.display='none';
+  document.getElementById('lb-cats-online').style.display='flex';
+  document.getElementById('lb-online-note').style.display='block';
+  lbTab=mode+'-hard';
+  highlightCatTab();
+  showScreen('lb-screen');
+  refreshLB();
+}
+
 function showLBTab(key){
   lbTab=key;
-  document.querySelectorAll('.lb-tab').forEach(function(el){el.classList.remove('active');});
-  var el=document.getElementById('lb-tab-'+key); if(el) el.classList.add('active');
-  fetchOnlineScores(key);
+  highlightCatTab();
+  refreshLB();
 }
-function renderLB(){
-  var ul=document.getElementById('lb-list'); ul.innerHTML='';
-  if(lbLoading){ ul.innerHTML='<li style="color:#888;list-style:none">Loading…</li>'; return; }
-  var scores=lbCache[lbTab];
-  if(!scores) scores=getLocalScores(lbTab);
-  if(!scores.length){ ul.innerHTML='<li style="color:#555;list-style:none">No scores yet</li>'; return; }
-  for(var i=0;i<scores.length;i++){
-    var li=document.createElement('li');
-    li.innerHTML='<span>'+(i+1)+'. '+scores[i].name+'</span><span>'+scores[i].score+'</span>';
-    ul.appendChild(li);
+
+function highlightCatTab(){
+  document.querySelectorAll('.lb-tab').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('lbo-trap').classList.remove('active');
+  document.getElementById('lbo-battle').classList.remove('active');
+  if(lbSource==='online'){
+    if(lbTab==='trap-hard') document.getElementById('lbo-trap').classList.add('active');
+    else if(lbTab==='battle-hard') document.getElementById('lbo-battle').classList.add('active');
+  } else {
+    var el=document.getElementById('lb-tab-'+lbTab); if(el) el.classList.add('active');
   }
 }
+
+function refreshLB(){
+  if(lbSource==='online'&&/-hard$/.test(lbTab)) fetchOnlineScores(lbTab);
+  else renderLB();
+}
+
+function renderLB(){
+  var ul=document.getElementById('lb-list'); ul.innerHTML='';
+  if(lbSource==='online'){
+    if(!/-hard$/.test(lbTab)){
+      ul.innerHTML='<li style="color:#777;list-style:none;justify-content:center">Online is Hard mode only</li>';
+      return;
+    }
+    if(lbLoading){ ul.innerHTML='<li style="color:#888;list-style:none;justify-content:center">Loading…</li>'; return; }
+    var os=lbCache[lbTab]||[];
+    if(!os.length){ ul.innerHTML='<li style="color:#555;list-style:none;justify-content:center">No scores yet</li>'; return; }
+    for(var i=0;i<os.length;i++){
+      var li=document.createElement('li');
+      li.innerHTML='<span>'+(i+1)+'. '+os[i].name+'</span><span>'+os[i].score+'</span>';
+      ul.appendChild(li);
+    }
+  } else {
+    var ps=getLocalScores(lbTab);
+    if(!ps.length){ ul.innerHTML='<li style="color:#555;list-style:none;justify-content:center">No scores yet</li>'; return; }
+    for(var k=0;k<ps.length;k++){
+      var li2=document.createElement('li');
+      li2.innerHTML='<span>'+(k+1)+'. '+ps[k].name+'</span><span>'+ps[k].score+'</span>';
+      ul.appendChild(li2);
+    }
+  }
+}
+
 function backToMenu(){hideAll();showScreen('menu-screen');}
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
