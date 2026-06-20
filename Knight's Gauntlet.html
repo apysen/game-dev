@@ -37,7 +37,6 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 #lb-list{width:260px;padding:0;}
 #lb-list li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;font-size:13px;color:#ccc;list-style:none;}
 #lb-list li:first-child{color:#f0c040;font-weight:700;}
-.lb-tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;justify-content:center;}
 .lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;}
 .lb-tab.active{border-color:#f0c040;color:#f0c040;}
 #name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:160px;text-transform:uppercase;}
@@ -67,7 +66,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
         <button class="mode-btn" id="btn-battle" onclick="selectMode('battle')">♟ Battle<br><span style="font-size:10px;font-weight:400;">Capture enemies</span></button>
       </div>
       <div class="diff-section" id="diff-section">
-        <p style="font-size:11px;color:#666;text-align:center;" id="diff-label">DIFFICULTY</p>
+        <p style="font-size:11px;color:#666;text-align:center;" id="diff-label">SCROLL SPEED</p>
         <div class="diff-row">
           <button class="diff-btn" id="diff-easy" onclick="selectDiff('easy')">🟢 Easy</button>
           <button class="diff-btn active" id="diff-medium" onclick="selectDiff('medium')">🟡 Medium</button>
@@ -107,13 +106,13 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
     </div>
 
-    <!-- NAME ENTRY -->
+    <!-- GAME OVER -->
     <div class="overlay" id="name-screen" style="display:none">
       <h2>GAME OVER</h2>
       <p id="final-score-txt" style="font-size:26px;font-weight:700;color:#f0c040;"></p>
-      <p>Enter your initials</p>
+      <p id="name-prompt">Enter your initials</p>
       <input type="text" id="name-input" maxlength="3" placeholder="AAA" autocomplete="off" spellcheck="false">
-      <button class="btn" onclick="submitScore()">SAVE SCORE</button>
+      <button class="btn" id="save-score-btn" onclick="submitScore()">SAVE SCORE</button>
       <div style="display:flex;gap:10px;">
         <button class="btn-outline" style="font-size:12px" onclick="backToMenu()">Home</button>
         <button class="btn-outline" style="font-size:12px" onclick="restartGame()">↺ Restart</button>
@@ -130,28 +129,14 @@ var gameState = 'menu';
 var score = 0, trapScore = 0;
 var animFrame = null, lastTime = null;
 var pendingScore = 0, lbTab = 'trap-medium';
-var paused = false;
-
 var scrollPx = 0, scrollSpeed = 62;
 var playerCanvasY = 0, playerCol = 2;
-var obstacles = [];
-var popups = [];
+var obstacles = [], popups = [];
 var nextSpawnAt = 0, spawnIndex = 0;
-var lastBattleMoveTime = 0;
-var battleMoveInterval = 2000; // ms between enemy moves, set on startGame
+var lastBattleMoveTime = 0, battleMoveInterval = 1500;
 
-// Trap: [startSpeed, maxSpeed]
-var TRAP_DIFF = {
-  easy:   [70,  180],
-  medium: [110, 240],
-  hard:   [150, 300]
-};
-// Battle: move interval in ms (slower = easier)
-var BATTLE_DIFF = {
-  easy:   2500,
-  medium: 1500,
-  hard:   800
-};
+var TRAP_DIFF   = { easy:[70,180], medium:[110,240], hard:[150,300] };
+var BATTLE_DIFF = { easy:2500, medium:1500, hard:800 };
 
 var PIECE_TYPES = ['pawn','bishop','rook','queen'];
 var PIECES = {
@@ -164,17 +149,21 @@ var PIECES = {
 var PIECE_POINTS = {pawn:1, bishop:3, rook:5, queen:10};
 var L_DELTAS = [[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[1,-2],[-1,2],[1,2]];
 
+function getSavedName(){ return localStorage.getItem('kg_player_name')||''; }
+function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
+
+// ── Audio ──────────────────────────────────────────────────────────────────
 var audioCtx = null;
 function unlockAudio(){
   try{
-    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
     if(audioCtx.state==='suspended') audioCtx.resume();
-  } catch(e){}
+  }catch(e){}
 }
 function playMoveSound(){
   try{
-    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    var now=audioCtx.currentTime, sr=audioCtx.sampleRate;
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    var now=audioCtx.currentTime,sr=audioCtx.sampleRate;
     var bufSize=Math.floor(sr*0.15);
     var buf=audioCtx.createBuffer(1,bufSize,sr);
     var data=buf.getChannelData(0);
@@ -186,9 +175,10 @@ function playMoveSound(){
     g.gain.setValueAtTime(0.35,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.15);
     noise.connect(bp); bp.connect(shelf); shelf.connect(g); g.connect(audioCtx.destination);
     noise.start(now); noise.stop(now+0.15);
-  } catch(e){}
+  }catch(e){}
 }
 
+// ── Init ───────────────────────────────────────────────────────────────────
 function init(){
   canvas=document.getElementById('gc');
   ctx=canvas.getContext('2d');
@@ -214,8 +204,7 @@ function selectMode(m){
   mode=m;
   document.getElementById('btn-trap').classList.toggle('active',m==='trap');
   document.getElementById('btn-battle').classList.toggle('active',m==='battle');
-  // Difficulty section visible for both modes
-  document.getElementById('diff-label').textContent = m==='trap' ? 'SCROLL SPEED' : 'ENEMY SPEED';
+  document.getElementById('diff-label').textContent=m==='trap'?'SCROLL SPEED':'ENEMY SPEED';
 }
 
 function selectDiff(d){
@@ -227,16 +216,16 @@ function selectDiff(d){
 
 function getLBKey(){ return mode+'-'+difficulty; }
 
+// ── Start ──────────────────────────────────────────────────────────────────
 function startGame(){
   resize(); hideAll();
   document.getElementById('hud').style.display='flex';
   var labels={easy:'Easy',medium:'Medium',hard:'Hard'};
   document.getElementById('mode-badge').textContent=(mode==='trap'?'TRAP':'BATTLE')+' · '+labels[difficulty];
-  score=0; trapScore=0; scrollPx=0; paused=false;
-  scrollSpeed = mode==='trap' ? TRAP_DIFF[difficulty][0] : 70;
-  battleMoveInterval = BATTLE_DIFF[difficulty];
-  playerCol=2;
-  playerCanvasY=canvas.height-4*cellH;
+  score=0; trapScore=0; scrollPx=0;
+  scrollSpeed=mode==='trap'?TRAP_DIFF[difficulty][0]:70;
+  battleMoveInterval=BATTLE_DIFF[difficulty];
+  playerCol=2; playerCanvasY=canvas.height-4*cellH;
   obstacles=[]; popups=[];
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
   for(var r=1;r<ROWS-1;r++) spawnRowAtCanvasY(playerCanvasY-r*cellH);
@@ -251,8 +240,8 @@ function spawnRowAtCanvasY(cy){
   if(mode==='trap'){
     var progress=Math.min(1,scrollPx/(cellH*40));
     var numOpen=Math.random()<progress?2:3;
-    var dcs=[-2,-1,1,2], reachable=[];
-    for(var i=0;i<dcs.length;i++){ var nc=playerCol+dcs[i]; if(nc>=0&&nc<COLS) reachable.push(nc); }
+    var dcs=[-2,-1,1,2],reachable=[];
+    for(var i=0;i<dcs.length;i++){var nc=playerCol+dcs[i];if(nc>=0&&nc<COLS)reachable.push(nc);}
     reachable.sort(function(){return Math.random()-0.5;});
     var open={};
     for(var k=0;k<Math.min(numOpen,reachable.length);k++) open[reachable[k]]=true;
@@ -261,12 +250,21 @@ function spawnRowAtCanvasY(cy){
   } else {
     if(Math.random()<0.55){
       var t=PIECE_TYPES[Math.floor(Math.random()*PIECE_TYPES.length)];
-      obstacles.push({col:Math.floor(Math.random()*COLS),canvasY:cy,pieceType:t,alive:true,nextCol:null});
+      obstacles.push({col:Math.floor(Math.random()*COLS),canvasY:cy,pieceType:t,alive:true,nextCol:null,diagDir:0});
     }
   }
   spawnIndex++;
 }
 
+function cellOccupied(col, canvasY, excludeIdx){
+  for(var i=0;i<obstacles.length;i++){
+    if(i===excludeIdx||!obstacles[i].alive) continue;
+    if(obstacles[i].col===col&&Math.abs(obstacles[i].canvasY-canvasY)<cellH*0.5) return true;
+  }
+  return false;
+}
+
+// ── Loop ───────────────────────────────────────────────────────────────────
 function loop(ts){
   if(gameState!=='playing') return;
   animFrame=requestAnimationFrame(loop);
@@ -279,8 +277,7 @@ function update(dt){
   var delta=scrollSpeed*dt;
   scrollPx+=delta;
   if(mode==='trap'){
-    var maxSpd=TRAP_DIFF[difficulty][1];
-    scrollSpeed=Math.min(maxSpd, TRAP_DIFF[difficulty][0]+scrollPx*0.01);
+    scrollSpeed=Math.min(TRAP_DIFF[difficulty][1],TRAP_DIFF[difficulty][0]+scrollPx*0.01);
   }
   playerCanvasY+=delta;
   for(var i=0;i<obstacles.length;i++) obstacles[i].canvasY+=delta;
@@ -290,42 +287,109 @@ function update(dt){
     if(popups[p].alpha<=0) popups.splice(p,1);
   }
   while(scrollPx>=nextSpawnAt){ spawnRowAtCanvasY(-cellH); nextSpawnAt+=cellH; }
-  obstacles=obstacles.filter(function(o){ return o.alive&&o.canvasY<canvas.height+cellH; });
+  obstacles=obstacles.filter(function(o){return o.alive&&o.canvasY<canvas.height+cellH;});
 
   if(mode==='battle'){
     var now=Date.now();
     if(now-lastBattleMoveTime>=battleMoveInterval){
       lastBattleMoveTime=now;
+      var dead=false;
       for(var j=0;j<obstacles.length;j++){
-        var o=obstacles[j]; if(!o.alive) continue;
-        if(o.pieceType==='pawn'||o.pieceType==='rook') o.canvasY+=cellH;
-        else if(o.pieceType==='bishop'||o.pieceType==='queen'){
-          if(o.nextCol!==null) o.col=o.nextCol;
-          o.nextCol=Math.max(0,Math.min(COLS-1,o.col+(Math.random()<0.5?1:-1)));
-          o.canvasY+=cellH;
+        var o=obstacles[j];
+        if(!o.alive) continue;
+
+        if(o.pieceType==='rook'){
+          var rookNextY=o.canvasY+cellH;
+          var rookBlocked=cellOccupied(o.col,rookNextY,j)||(o.col===playerCol&&Math.abs(rookNextY-playerCanvasY)<cellH*0.5);
+          if(!rookBlocked){
+            o.canvasY=rookNextY;
+          } else {
+            // Try moving sideways (left or right) instead, staying on same row
+            var sideOptions=[-1,1].sort(function(){return Math.random()-0.5;});
+            var moved=false;
+            for(var si=0;si<sideOptions.length;si++){
+              var sc=o.col+sideOptions[si];
+              if(sc<0||sc>=COLS) continue;
+              var sideBlocked=cellOccupied(sc,o.canvasY,j)||(sc===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5);
+              if(!sideBlocked){ o.col=sc; moved=true; break; }
+            }
+            // If sideways also blocked, stay put this tick
+          }
         }
-        if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5){loseLife();return;}
+        else if(o.pieceType==='pawn'){
+          // Check threat BEFORE moving: does the player sit in this pawn's current
+          // diagonal-threat zone (one row ahead, one col to either side)?
+          var preThreatY=o.canvasY+cellH;
+          var inThreatZone = Math.abs(preThreatY-playerCanvasY)<cellH*0.5 &&
+                              (playerCol===o.col-1||playerCol===o.col+1);
+          if(inThreatZone){
+            dead=true;
+          } else {
+            var pawnNextY=o.canvasY+cellH;
+            var pawnBlocked=cellOccupied(o.col,pawnNextY,j)||(o.col===playerCol&&Math.abs(pawnNextY-playerCanvasY)<cellH*0.5);
+            if(!pawnBlocked) o.canvasY=pawnNextY;
+          }
+        }
+        else if(o.pieceType==='bishop'){
+          if(o.nextCol!==null) o.col=o.nextCol;
+          var bdc=o.diagDir||(Math.random()<0.5?1:-1);
+          var nextC=o.col+bdc;
+          if(nextC<0||nextC>=COLS){ bdc=-bdc; nextC=o.col+bdc; }
+          var bishopNextY=o.canvasY+cellH;
+          if(cellOccupied(nextC,bishopNextY,j)){
+            bdc=-bdc; nextC=o.col+bdc;
+            if(nextC<0||nextC>=COLS||cellOccupied(nextC,bishopNextY,j)) nextC=o.col;
+          }
+          o.diagDir=bdc;
+          o.nextCol=nextC;
+          o.canvasY=bishopNextY;
+        }
+        else if(o.pieceType==='queen'){
+          if(o.nextCol!==null) o.col=o.nextCol;
+          var qdc=Math.random()<0.5?1:-1;
+          var qNextCol=Math.max(0,Math.min(COLS-1,o.col+qdc));
+          var queenNextY=o.canvasY+cellH;
+          if(cellOccupied(qNextCol,queenNextY,j)) qNextCol=o.col;
+          o.nextCol=qNextCol;
+          o.canvasY=queenNextY;
+        }
+
+        if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5) dead=true;
       }
+      if(dead){ loseLife(); return; }
     }
   }
-  if(playerCanvasY>canvas.height+cellH){loseLife();return;}
-  checkCollision(); updateHUD();
+
+  if(playerCanvasY>canvas.height+cellH){ loseLife(); return; }
+  checkCollision();
+  updateHUD();
 }
 
 function checkCollision(){
   for(var i=0;i<obstacles.length;i++){
     var o=obstacles[i];
-    if(o.alive&&o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5){loseLife();return;}
+    if(!o.alive) continue;
+    if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5){ loseLife(); return; }
   }
 }
-
 function loseLife(){
   gameState='dead';
   if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;}
   pendingScore=score;
   document.getElementById('hud').style.display='none';
   document.getElementById('final-score-txt').textContent='Score: '+score;
-  document.getElementById('name-input').value='';
+  var savedName=getSavedName();
+  if(savedName){
+    saveScore(getLBKey(),savedName,pendingScore);
+    document.getElementById('name-prompt').style.display='none';
+    document.getElementById('name-input').style.display='none';
+    document.getElementById('save-score-btn').style.display='none';
+  } else {
+    document.getElementById('name-prompt').style.display='';
+    document.getElementById('name-input').style.display='';
+    document.getElementById('save-score-btn').style.display='';
+    document.getElementById('name-input').value='';
+  }
   showScreen('name-screen');
 }
 
@@ -341,7 +405,7 @@ function getValidMoves(){
       var o=obstacles[j]; if(!o.alive) continue;
       if(o.col===nc&&Math.abs(o.canvasY-ny)<cellH*0.5){
         if(mode==='battle'&&o.pieceType!=='trap'){}
-        else{blocked=true;break;}
+        else{ blocked=true; break; }
       }
     }
     if(!blocked) moves.push({col:nc,canvasY:ny});
@@ -352,22 +416,23 @@ function getValidMoves(){
 function handleTap(e){
   if(gameState!=='playing') return;
   var rect=canvas.getBoundingClientRect();
-  var tx=e.clientX-rect.left, ty=e.clientY-rect.top;
+  var tx=e.clientX-rect.left,ty=e.clientY-rect.top;
   var tc=Math.floor(tx/cellW);
   var moves=getValidMoves();
-  var move=null, bestDist=cellH*1.2;
+  var move=null,bestDist=cellH*1.2;
   for(var i=0;i<moves.length;i++){
     var mv=moves[i];
     if(mv.col!==tc) continue;
     var dist=Math.abs(mv.canvasY-ty);
-    if(dist<bestDist){bestDist=dist;move=mv;}
+    if(dist<bestDist){ bestDist=dist; move=mv; }
   }
   if(!move) return;
   if(mode==='battle'){
     for(var j=0;j<obstacles.length;j++){
       var o=obstacles[j];
       if(o.alive&&o.pieceType!=='trap'&&o.col===move.col&&Math.abs(o.canvasY-move.canvasY)<cellH*0.5){
-        o.alive=false; var pts=PIECE_POINTS[o.pieceType]||1; score+=pts;
+        o.alive=false;
+        var pts=PIECE_POINTS[o.pieceType]||1; score+=pts;
         popups.push({col:move.col,canvasY:move.canvasY-cellH*0.3,text:'+'+pts,alpha:1});
       }
     }
@@ -378,45 +443,63 @@ function handleTap(e){
     score=trapScore;
   }
   playerCol=move.col; playerCanvasY=move.canvasY;
-  playMoveSound(); checkCollision(); updateHUD();
+  playMoveSound();
+  checkCollision();
+  updateHUD();
 }
 
+// ── Render ─────────────────────────────────────────────────────────────────
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  var tileOffset=scrollPx%cellH, baseRow=Math.floor(scrollPx/cellH);
+  var tileOffset=scrollPx%cellH,baseRow=Math.floor(scrollPx/cellH);
+
   for(var r=-1;r<=ROWS+1;r++){
-    var ry=r*cellH+tileOffset, worldRow=baseRow+r;
+    var ry=r*cellH+tileOffset,worldRow=baseRow+r;
     for(var c=0;c<COLS;c++){
       ctx.fillStyle=(worldRow+c)%2===0?'#2d2d4e':'#1e1e35';
       ctx.fillRect(c*cellW,ry,cellW,cellH);
     }
   }
 
-  // Valid move highlights
   var moves=getValidMoves();
   for(var vi=0;vi<moves.length;vi++){
     var mv=moves[vi];
     if(mv.canvasY>canvas.height) continue;
     var danger=Math.max(0,Math.min(1,mv.canvasY/canvas.height));
-    var rr=Math.round(240+(255-240)*danger), gg=Math.round(192+(255-192)*danger), bb=Math.round(64+(255-64)*danger);
+    var rr=Math.round(240+(255-240)*danger),gg=Math.round(192+(255-192)*danger),bb=Math.round(64+(255-64)*danger);
     ctx.fillStyle='rgba('+rr+','+gg+','+bb+',0.25)';
     ctx.fillRect(mv.col*cellW,mv.canvasY,cellW,cellH);
     ctx.fillStyle='rgba('+rr+','+gg+','+bb+',0.7)';
     ctx.beginPath(); ctx.arc(mv.col*cellW+cellW/2,mv.canvasY+cellH/2,7,0,Math.PI*2); ctx.fill();
   }
 
-  // Battle next-move previews
   if(mode==='battle'){
     for(var pi=0;pi<obstacles.length;pi++){
       var po=obstacles[pi]; if(!po.alive) continue;
-      var ny=po.canvasY+cellH; if(ny<-cellH||ny>canvas.height) continue;
-      var nc=(po.pieceType==='bishop'||po.pieceType==='queen')&&po.nextCol!==null?po.nextCol:po.col;
-      ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(nc*cellW,ny,cellW,cellH);
-      ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5; ctx.strokeRect(nc*cellW+1,ny+1,cellW-2,cellH-2);
+      if(po.pieceType==='pawn'){
+        var threatY=po.canvasY+cellH;
+        if(threatY>=-cellH&&threatY<=canvas.height){
+          var threatCols=[po.col-1,po.col+1];
+          for(var ti=0;ti<threatCols.length;ti++){
+            var tc2=threatCols[ti];
+            if(tc2<0||tc2>=COLS) continue;
+            ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(tc2*cellW,threatY,cellW,cellH);
+            ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
+            ctx.strokeRect(tc2*cellW+1,threatY+1,cellW-2,cellH-2);
+          }
+        }
+      } else {
+        var ny=po.canvasY+cellH;
+        if(ny<-cellH||ny>canvas.height) continue;
+        var nc=po.col;
+        if((po.pieceType==='bishop'||po.pieceType==='queen')&&po.nextCol!==null) nc=po.nextCol;
+        ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(nc*cellW,ny,cellW,cellH);
+        ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
+        ctx.strokeRect(nc*cellW+1,ny+1,cellW-2,cellH-2);
+      }
     }
   }
 
-  // Obstacles
   var fs=Math.round(cellW*0.55);
   for(var oi=0;oi<obstacles.length;oi++){
     var ob=obstacles[oi]; if(!ob.alive) continue;
@@ -429,7 +512,6 @@ function render(){
     ctx.fillText(PIECES[ob.pieceType].sym,ob.col*cellW+cellW/2,oy+cellH/2+2);
   }
 
-  // Player
   var py=playerCanvasY;
   ctx.fillStyle='rgba(240,192,64,0.2)'; ctx.fillRect(playerCol*cellW,py,cellW,cellH);
   ctx.shadowColor='#f0c040'; ctx.shadowBlur=14; ctx.fillStyle='#f0c040';
@@ -438,7 +520,6 @@ function render(){
   ctx.fillText('♞',playerCol*cellW+cellW/2,py+cellH/2+2);
   ctx.shadowBlur=0;
 
-  // Popups
   for(var pp=0;pp<popups.length;pp++){
     var p=popups[pp];
     ctx.globalAlpha=Math.max(0,p.alpha); ctx.fillStyle='#f0c040';
@@ -448,38 +529,27 @@ function render(){
   }
   ctx.globalAlpha=1;
 
-  // Grid lines
   ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
   for(var c2=1;c2<COLS;c2++){ctx.beginPath();ctx.moveTo(c2*cellW,0);ctx.lineTo(c2*cellW,canvas.height);ctx.stroke();}
   for(var r2=-1;r2<=ROWS+1;r2++){var ly=r2*cellH+tileOffset;ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(canvas.width,ly);ctx.stroke();}
 
-  // Battle mode: enemy move timer progress bar
   if(mode==='battle'&&gameState==='playing'){
     var elapsed=Date.now()-lastBattleMoveTime;
-    var progress=Math.min(1,elapsed/battleMoveInterval);
-    var barW=canvas.width*0.55;
-    var barH=6;
-    var barX=(canvas.width-barW)/2;
-    var barY=canvas.height-10;
-    // Track
+    var prog=Math.min(1,elapsed/battleMoveInterval);
+    var barW=canvas.width*0.55,barH=6,barX=(canvas.width-barW)/2,barY=canvas.height-10;
     ctx.fillStyle='rgba(255,255,255,0.1)';
     ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,3); ctx.fill();
-    // Fill — interpolate green→yellow→red
-    var r3,g3,b3;
-    if(progress<0.5){
-      r3=Math.round(progress*2*240); g3=200; b3=50;
-    } else {
-      r3=240; g3=Math.round(200*(1-(progress-0.5)*2)); b3=50;
-    }
-    ctx.fillStyle='rgb('+r3+','+g3+','+b3+')';
-    ctx.beginPath(); ctx.roundRect(barX,barY,barW*progress,barH,3); ctx.fill();
-    // Label
+    var r3=prog<0.5?Math.round(prog*2*240):240;
+    var g3=prog<0.5?200:Math.round(200*(1-(prog-0.5)*2));
+    ctx.fillStyle='rgb('+r3+','+g3+',50)';
+    ctx.beginPath(); ctx.roundRect(barX,barY,barW*prog,barH,3); ctx.fill();
     ctx.fillStyle='rgba(255,255,255,0.35)';
     ctx.font='9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='bottom';
     ctx.fillText('ENEMY MOVE',canvas.width/2,barY-2);
   }
 }
 
+// ── HUD & flow ─────────────────────────────────────────────────────────────
 function updateHUD(){ document.getElementById('score-display').textContent=score; }
 
 function pauseGame(){
@@ -491,18 +561,24 @@ function pauseGame(){
 function resumeGame(){
   document.getElementById('pause-screen').style.display='none';
   gameState='playing'; lastTime=null;
-  // Adjust lastBattleMoveTime so bar doesn't jump on resume
   lastBattleMoveTime=Date.now()-(battleMoveInterval*0.5);
   animFrame=requestAnimationFrame(loop);
 }
 function restartGame(){ startGame(); }
 
+// ── Leaderboard ────────────────────────────────────────────────────────────
 function getScores(key){try{return JSON.parse(localStorage.getItem('kg_'+key)||'[]');}catch(e){return[];}}
 function saveScore(key,name,s){
   var arr=getScores(key);
   arr.push({name:(name||'???').toUpperCase().slice(0,3),score:s});
   arr.sort(function(a,b){return b.score-a.score;});
   localStorage.setItem('kg_'+key,JSON.stringify(arr.slice(0,10)));
+}
+function submitScore(){
+  var name=(document.getElementById('name-input').value.trim()||'AAA').toUpperCase().slice(0,3);
+  setSavedName(name);
+  saveScore(getLBKey(),name,pendingScore);
+  backToMenu();
 }
 function showLeaderboard(){
   hideAll(); lbTab=getLBKey();
@@ -526,7 +602,6 @@ function renderLB(){
     ul.appendChild(li);
   }
 }
-function submitScore(){saveScore(getLBKey(),(document.getElementById('name-input').value.trim()||'AAA'),pendingScore);backToMenu();}
 function backToMenu(){hideAll();showScreen('menu-screen');}
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
