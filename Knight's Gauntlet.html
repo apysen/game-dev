@@ -138,16 +138,19 @@ var lastBattleMoveTime = 0, battleMoveInterval = 1500;
 var TRAP_DIFF   = { easy:[70,180], medium:[110,240], hard:[150,300] };
 var BATTLE_DIFF = { easy:2500, medium:1500, hard:800 };
 
-var PIECE_TYPES = ['pawn','bishop','rook','queen'];
+// Enemy piece types (battle mode). Pawns removed; enemy knight added.
+var PIECE_TYPES = ['rook','bishop','knight','queen'];
 var PIECES = {
-  pawn:   {sym:'♙', color:'#e05050'},
-  bishop: {sym:'♝', color:'#9060e0'},
   rook:   {sym:'♜', color:'#4080e0'},
+  bishop: {sym:'♝', color:'#9060e0'},
+  knight: {sym:'♞', color:'#50c878'},
   queen:  {sym:'♛', color:'#e04080'},
   trap:   {sym:'✕', color:'#cc3333'}
 };
-var PIECE_POINTS = {pawn:1, bishop:3, rook:5, queen:10};
+var PIECE_POINTS = {rook:1, bishop:3, knight:5, queen:10};
 var L_DELTAS = [[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[1,-2],[-1,2],[1,2]];
+var KNIGHT_JUMPS = [[1,2],[-1,2],[1,-2],[-1,-2],[2,1],[2,-1],[-2,1],[-2,-1]];
+var QUEEN_ADJ = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 
 function getSavedName(){ return localStorage.getItem('kg_player_name')||''; }
 function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
@@ -230,6 +233,7 @@ function startGame(){
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
   for(var r=1;r<ROWS-1;r++) spawnRowAtCanvasY(playerCanvasY-r*cellH);
   nextSpawnAt=scrollPx+cellH;
+  if(mode==='battle') planKnightMoves();
   gameState='playing';
   updateHUD();
   if(animFrame) cancelAnimationFrame(animFrame);
@@ -249,20 +253,20 @@ function spawnRowAtCanvasY(cy){
     for(var c=0;c<COLS;c++) if(!open[c]) obstacles.push({col:c,canvasY:cy,pieceType:'trap',alive:true});
   } else {
     if(Math.random()<0.55){
-      var t=PIECE_TYPES[Math.floor(Math.random()*PIECE_TYPES.length)];
-      obstacles.push({col:Math.floor(Math.random()*COLS),canvasY:cy,pieceType:t,alive:true,nextCol:null,diagDir:0});
+      // Weight spawns: queen rarer (high value), rook/bishop/knight common
+      var pool=['rook','rook','bishop','bishop','knight','knight','queen'];
+      var t=pool[Math.floor(Math.random()*pool.length)];
+      obstacles.push({
+        col:Math.floor(Math.random()*COLS), canvasY:cy, pieceType:t, alive:true,
+        dir:(Math.random()<0.5?1:-1),  // bishop diagonal direction
+        planDC:null, planDR:null        // enemy knight planned jump
+      });
     }
   }
   spawnIndex++;
 }
 
-function cellOccupied(col, canvasY, excludeIdx){
-  for(var i=0;i<obstacles.length;i++){
-    if(i===excludeIdx||!obstacles[i].alive) continue;
-    if(obstacles[i].col===col&&Math.abs(obstacles[i].canvasY-canvasY)<cellH*0.5) return true;
-  }
-  return false;
-}
+function rowOf(y){ return Math.round(y/cellH); }
 
 // ── Loop ───────────────────────────────────────────────────────────────────
 function loop(ts){
@@ -286,83 +290,158 @@ function update(dt){
     popups[p].alpha-=dt*1.8;
     if(popups[p].alpha<=0) popups.splice(p,1);
   }
-  while(scrollPx>=nextSpawnAt){ spawnRowAtCanvasY(-cellH); nextSpawnAt+=cellH; }
+  var spawned=false;
+  while(scrollPx>=nextSpawnAt){ spawnRowAtCanvasY(-cellH); nextSpawnAt+=cellH; spawned=true; }
+  if(spawned&&mode==='battle') planKnightMoves();
   obstacles=obstacles.filter(function(o){return o.alive&&o.canvasY<canvas.height+cellH;});
 
   if(mode==='battle'){
     var now=Date.now();
     if(now-lastBattleMoveTime>=battleMoveInterval){
       lastBattleMoveTime=now;
-      var dead=false;
-      for(var j=0;j<obstacles.length;j++){
-        var o=obstacles[j];
-        if(!o.alive) continue;
-
-        if(o.pieceType==='rook'){
-          var rookNextY=o.canvasY+cellH;
-          var rookBlocked=cellOccupied(o.col,rookNextY,j)||(o.col===playerCol&&Math.abs(rookNextY-playerCanvasY)<cellH*0.5);
-          if(!rookBlocked){
-            o.canvasY=rookNextY;
-          } else {
-            // Try moving sideways (left or right) instead, staying on same row
-            var sideOptions=[-1,1].sort(function(){return Math.random()-0.5;});
-            var moved=false;
-            for(var si=0;si<sideOptions.length;si++){
-              var sc=o.col+sideOptions[si];
-              if(sc<0||sc>=COLS) continue;
-              var sideBlocked=cellOccupied(sc,o.canvasY,j)||(sc===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5);
-              if(!sideBlocked){ o.col=sc; moved=true; break; }
-            }
-            // If sideways also blocked, stay put this tick
-          }
-        }
-        else if(o.pieceType==='pawn'){
-          // Check threat BEFORE moving: does the player sit in this pawn's current
-          // diagonal-threat zone (one row ahead, one col to either side)?
-          var preThreatY=o.canvasY+cellH;
-          var inThreatZone = Math.abs(preThreatY-playerCanvasY)<cellH*0.5 &&
-                              (playerCol===o.col-1||playerCol===o.col+1);
-          if(inThreatZone){
-            dead=true;
-          } else {
-            var pawnNextY=o.canvasY+cellH;
-            var pawnBlocked=cellOccupied(o.col,pawnNextY,j)||(o.col===playerCol&&Math.abs(pawnNextY-playerCanvasY)<cellH*0.5);
-            if(!pawnBlocked) o.canvasY=pawnNextY;
-          }
-        }
-        else if(o.pieceType==='bishop'){
-          if(o.nextCol!==null) o.col=o.nextCol;
-          var bdc=o.diagDir||(Math.random()<0.5?1:-1);
-          var nextC=o.col+bdc;
-          if(nextC<0||nextC>=COLS){ bdc=-bdc; nextC=o.col+bdc; }
-          var bishopNextY=o.canvasY+cellH;
-          if(cellOccupied(nextC,bishopNextY,j)){
-            bdc=-bdc; nextC=o.col+bdc;
-            if(nextC<0||nextC>=COLS||cellOccupied(nextC,bishopNextY,j)) nextC=o.col;
-          }
-          o.diagDir=bdc;
-          o.nextCol=nextC;
-          o.canvasY=bishopNextY;
-        }
-        else if(o.pieceType==='queen'){
-          if(o.nextCol!==null) o.col=o.nextCol;
-          var qdc=Math.random()<0.5?1:-1;
-          var qNextCol=Math.max(0,Math.min(COLS-1,o.col+qdc));
-          var queenNextY=o.canvasY+cellH;
-          if(cellOccupied(qNextCol,queenNextY,j)) qNextCol=o.col;
-          o.nextCol=qNextCol;
-          o.canvasY=queenNextY;
-        }
-
-        if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5) dead=true;
-      }
-      if(dead){ loseLife(); return; }
+      if(moveEnemyPieces()){ loseLife(); return; }
     }
   }
 
   if(playerCanvasY>canvas.height+cellH){ loseLife(); return; }
   checkCollision();
   updateHUD();
+}
+
+// Two-phase enemy movement with overlap prevention. Returns true if knight captured.
+function moveEnemyPieces(){
+  var dead=false;
+  var knightRow=rowOf(playerCanvasY);
+
+  var occ={};
+  for(var a=0;a<obstacles.length;a++){
+    var oa=obstacles[a];
+    if(!oa.alive||oa.pieceType==='trap') continue;
+    occ[oa.col+','+rowOf(oa.canvasY)]=true;
+  }
+  var claimed={};
+  function cellFree(col,row,selfCol,selfRow){
+    if(col<0||col>=COLS) return false;
+    var key=col+','+row;
+    if(claimed[key]) return false;
+    if(occ[key] && !(col===selfCol&&row===selfRow)) return false;
+    return true;
+  }
+  function knightAt(col,row){ return col===playerCol&&knightRow===row; }
+  function targetable(col,row,sc,sr){ return knightAt(col,row)||cellFree(col,row,sc,sr); }
+
+  var order=['rook','bishop','knight','queen'];
+  for(var t=0;t<order.length;t++){
+    var ptype=order[t];
+    for(var j=0;j<obstacles.length;j++){
+      var o=obstacles[j];
+      if(!o.alive||o.pieceType!==ptype) continue;
+      var cr=rowOf(o.canvasY), fwd=cr+1;
+
+      if(o.pieceType==='rook'){
+        if(targetable(o.col,fwd,o.col,cr)){
+          o.canvasY+=cellH; claimed[o.col+','+fwd]=true;
+        } else {
+          var moved=false, sides=[-1,1].sort(function(){return Math.random()-0.5;});
+          for(var s=0;s<sides.length;s++){
+            var sc=o.col+sides[s];
+            if(cellFree(sc,cr,o.col,cr)){ o.col=sc; claimed[sc+','+cr]=true; moved=true; break; }
+          }
+          if(!moved) claimed[o.col+','+cr]=true;
+        }
+      }
+      else if(o.pieceType==='bishop'){
+        var dir=o.dir||1;
+        var tc=o.col+dir;
+        if(tc<0||tc>=COLS||!targetable(tc,fwd,o.col,cr)){ dir=-dir; tc=o.col+dir; }
+        if(tc>=0&&tc<COLS&&targetable(tc,fwd,o.col,cr)){
+          o.dir=dir; o.col=tc; o.canvasY+=cellH; claimed[tc+','+fwd]=true;
+        } else {
+          o.dir=dir; claimed[o.col+','+cr]=true;
+        }
+      }
+      else if(o.pieceType==='knight'){
+        var ex=null;
+        if(o.planDC!==null&&o.planDC!==undefined){
+          var ptc=o.col+o.planDC, ptr=cr+o.planDR;
+          if(ptc>=0&&ptc<COLS&&targetable(ptc,ptr,o.col,cr)) ex=[o.planDC,o.planDR];
+        }
+        if(ex===null){
+          var opts=KNIGHT_JUMPS.filter(function(m){
+            var kc=o.col+m[0], krr=cr+m[1];
+            return kc>=0&&kc<COLS&&targetable(kc,krr,o.col,cr);
+          });
+          var down=opts.filter(function(m){return m[1]>0;});
+          var pool=down.length?down:opts;
+          if(pool.length) ex=pool[Math.floor(Math.random()*pool.length)];
+        }
+        if(ex){
+          o.col+=ex[0]; o.canvasY+=ex[1]*cellH;
+          claimed[o.col+','+(cr+ex[1])]=true;
+        } else {
+          claimed[o.col+','+cr]=true;
+        }
+        o.planDC=null; o.planDR=null; // cleared so a fresh plan is made post-move
+      }
+      else if(o.pieceType==='queen'){
+        // Threatens all 8 adjacent squares — knight in any = capture
+        for(var qa=0;qa<QUEEN_ADJ.length;qa++){
+          if(knightAt(o.col+QUEEN_ADJ[qa][0], cr+QUEEN_ADJ[qa][1])) dead=true;
+        }
+        // Move one step; prefer not moving up so it keeps pace with the scroll
+        var qopts=QUEEN_ADJ.filter(function(adj){
+          var qc=o.col+adj[0], qr=cr+adj[1];
+          return qc>=0&&qc<COLS&&cellFree(qc,qr,o.col,cr);
+        });
+        var qfwd=qopts.filter(function(adj){return adj[1]>=0;});
+        var qpool=qfwd.length?qfwd:qopts;
+        if(qpool.length){
+          var qm=qpool[Math.floor(Math.random()*qpool.length)];
+          o.col+=qm[0]; o.canvasY+=qm[1]*cellH;
+          claimed[o.col+','+(cr+qm[1])]=true;
+        } else {
+          claimed[o.col+','+cr]=true;
+        }
+      }
+
+      if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5) dead=true;
+    }
+  }
+  planKnightMoves(true);
+  return dead;
+}
+
+// Plan each enemy knight's next jump (for the danger-tile preview).
+// Only (re)plans knights that don't already have a still-valid plan, so the
+// danger tile stays put once shown instead of flickering each frame.
+function planKnightMoves(force){
+  var occ={};
+  for(var a=0;a<obstacles.length;a++){
+    var oa=obstacles[a];
+    if(!oa.alive||oa.pieceType==='trap') continue;
+    occ[oa.col+','+rowOf(oa.canvasY)]=true;
+  }
+  var knightRow=rowOf(playerCanvasY);
+  function freeOrKnight(col,row,sc,sr){
+    if(col<0||col>=COLS) return false;
+    if(col===playerCol&&knightRow===row) return true;
+    if(occ[col+','+row]&&!(col===sc&&row===sr)) return false;
+    return true;
+  }
+  for(var j=0;j<obstacles.length;j++){
+    var o=obstacles[j];
+    if(!o.alive||o.pieceType!=='knight') continue;
+    var cr=rowOf(o.canvasY);
+    // Keep the existing plan if it's still a legal jump
+    if(!force && o.planDC!==null && o.planDC!==undefined){
+      if(freeOrKnight(o.col+o.planDC, cr+o.planDR, o.col, cr)) continue;
+    }
+    var opts=KNIGHT_JUMPS.filter(function(m){ return freeOrKnight(o.col+m[0],cr+m[1],o.col,cr); });
+    var down=opts.filter(function(m){return m[1]>0;});
+    var pool=down.length?down:opts;
+    if(pool.length){ var ch=pool[Math.floor(Math.random()*pool.length)]; o.planDC=ch[0]; o.planDR=ch[1]; }
+    else { o.planDC=null; o.planDR=null; }
+  }
 }
 
 function checkCollision(){
@@ -372,6 +451,7 @@ function checkCollision(){
     if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5){ loseLife(); return; }
   }
 }
+
 function loseLife(){
   gameState='dead';
   if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;}
@@ -449,6 +529,15 @@ function handleTap(e){
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+function drawThreatCell(col,y){
+  if(col<0||col>=COLS) return;
+  if(y<-cellH||y>canvas.height) return;
+  ctx.fillStyle='rgba(220,80,80,0.18)';
+  ctx.fillRect(col*cellW,y,cellW,cellH);
+  ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
+  ctx.strokeRect(col*cellW+1,y+1,cellW-2,cellH-2);
+}
+
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   var tileOffset=scrollPx%cellH,baseRow=Math.floor(scrollPx/cellH);
@@ -473,29 +562,25 @@ function render(){
     ctx.beginPath(); ctx.arc(mv.col*cellW+cellW/2,mv.canvasY+cellH/2,7,0,Math.PI*2); ctx.fill();
   }
 
+  // Enemy danger tiles
   if(mode==='battle'){
     for(var pi=0;pi<obstacles.length;pi++){
       var po=obstacles[pi]; if(!po.alive) continue;
-      if(po.pieceType==='pawn'){
-        var threatY=po.canvasY+cellH;
-        if(threatY>=-cellH&&threatY<=canvas.height){
-          var threatCols=[po.col-1,po.col+1];
-          for(var ti=0;ti<threatCols.length;ti++){
-            var tc2=threatCols[ti];
-            if(tc2<0||tc2>=COLS) continue;
-            ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(tc2*cellW,threatY,cellW,cellH);
-            ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
-            ctx.strokeRect(tc2*cellW+1,threatY+1,cellW-2,cellH-2);
-          }
+      var fy=po.canvasY+cellH;
+      if(po.pieceType==='rook'){
+        drawThreatCell(po.col,fy);
+      } else if(po.pieceType==='bishop'){
+        var bd=po.dir||1; var btc=po.col+bd;
+        if(btc<0||btc>=COLS) btc=po.col-bd;
+        drawThreatCell(btc,fy);
+      } else if(po.pieceType==='knight'){
+        if(po.planDC!==null&&po.planDC!==undefined){
+          drawThreatCell(po.col+po.planDC, po.canvasY+po.planDR*cellH);
         }
-      } else {
-        var ny=po.canvasY+cellH;
-        if(ny<-cellH||ny>canvas.height) continue;
-        var nc=po.col;
-        if((po.pieceType==='bishop'||po.pieceType==='queen')&&po.nextCol!==null) nc=po.nextCol;
-        ctx.fillStyle='rgba(220,80,80,0.18)'; ctx.fillRect(nc*cellW,ny,cellW,cellH);
-        ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
-        ctx.strokeRect(nc*cellW+1,ny+1,cellW-2,cellH-2);
+      } else if(po.pieceType==='queen'){
+        for(var qi=0;qi<QUEEN_ADJ.length;qi++){
+          drawThreatCell(po.col+QUEEN_ADJ[qi][0], po.canvasY+QUEEN_ADJ[qi][1]*cellH);
+        }
       }
     }
   }
@@ -539,9 +624,9 @@ function render(){
     var barW=canvas.width*0.55,barH=6,barX=(canvas.width-barW)/2,barY=canvas.height-10;
     ctx.fillStyle='rgba(255,255,255,0.1)';
     ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,3); ctx.fill();
-    var r3=prog<0.5?Math.round(prog*2*240):240;
-    var g3=prog<0.5?200:Math.round(200*(1-(prog-0.5)*2));
-    ctx.fillStyle='rgb('+r3+','+g3+',50)';
+    var brc=prog<0.5?Math.round(prog*2*240):240;
+    var bgc=prog<0.5?200:Math.round(200*(1-(prog-0.5)*2));
+    ctx.fillStyle='rgb('+brc+','+bgc+',50)';
     ctx.beginPath(); ctx.roundRect(barX,barY,barW*prog,barH,3); ctx.fill();
     ctx.fillStyle='rgba(255,255,255,0.35)';
     ctx.font='9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='bottom';
