@@ -42,8 +42,8 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 .lb-source-row{display:flex;gap:10px;margin-bottom:10px;}
 .lb-source-tab{background:#16213e;color:#aaa;border:2px solid #333;border-radius:10px;padding:8px 22px;font-size:15px;font-weight:700;cursor:pointer;}
 .lb-source-tab.active{border-color:#f0c040;color:#f0c040;}
-#name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
-#name-input::placeholder{color:#555;}
+#name-input,#menu-name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
+#name-input::placeholder,#menu-name-input::placeholder{color:#555;}
 .fineprint{font-size:10px;color:#666;max-width:240px;line-height:1.4;text-align:center;}
 </style>
 </head>
@@ -75,6 +75,17 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
           <button class="diff-btn" id="diff-easy" onclick="selectDiff('easy')">🟢 Easy</button>
           <button class="diff-btn active" id="diff-medium" onclick="selectDiff('medium')">🟡 Medium</button>
           <button class="diff-btn" id="diff-hard" onclick="selectDiff('hard')">🔴 Hard</button>
+        </div>
+      </div>
+      <div id="menu-name" style="display:flex;flex-direction:column;align-items:center;gap:8px;min-height:44px;justify-content:center;">
+        <div id="menu-name-set" style="display:none;align-items:center;gap:8px;">
+          <span style="font-size:13px;color:#aaa;">Playing as <b id="menu-name-display" style="color:#f0c040;"></b></span>
+          <button class="btn-sm" onclick="menuEditName()">change</button>
+        </div>
+        <div id="menu-name-entry" style="display:none;flex-direction:column;align-items:center;gap:8px;">
+          <input type="text" id="menu-name-input" maxlength="7" placeholder="ENTER NAME" autocomplete="off" spellcheck="false">
+          <p id="menu-name-error" style="font-size:11px;color:#e05050;display:none;margin:0;">Please enter a valid name.</p>
+          <button class="btn-sm" onclick="saveMenuName()">Save name</button>
         </div>
       </div>
       <button class="btn" onclick="startGame()">PLAY</button>
@@ -126,15 +137,24 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <div class="overlay" id="name-screen" style="display:none">
       <h2>GAME OVER</h2>
       <p id="final-score-txt" style="font-size:26px;font-weight:700;color:#f0c040;"></p>
-      <p>Enter your name</p>
-      <input type="text" id="name-input" maxlength="7" placeholder="NAME" autocomplete="off" spellcheck="false">
-      <p id="name-error" style="font-size:12px;color:#e05050;display:none;">Please choose a different name.</p>
-      <button class="btn" onclick="submitScore()">SAVE SCORE</button>
+      <p style="margin:0;color:#3cdc78;font-weight:700;">Saved as <span id="saved-name"></span> ✓</p>
+      <button class="btn-outline" id="trapped-btn" style="font-size:13px;display:none" onclick="showTrapped()">🟢 Was I trapped?</button>
       <p class="fineprint">Only your best Hard mode score appears on the online leaderboard.</p>
       <div style="display:flex;gap:10px;">
         <button class="btn-outline" style="font-size:12px" onclick="backToMenu()">Home</button>
         <button class="btn-outline" style="font-size:12px" onclick="restartGame()">↺ Restart</button>
       </div>
+    </div>
+
+    <!-- WAS I TRAPPED? -->
+    <div class="overlay" id="trapped-screen" style="display:none">
+      <h1 id="trapped-verdict" style="color:#3cdc78;">Nope</h1>
+      <p id="trapped-sub" style="font-size:13px;color:#aaa;">You had a way out. Here's the path:</p>
+      <div id="snap-scroll" style="width:84%;max-width:300px;max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:8px;border:1px solid #333;background:#1a1a2e;">
+        <canvas id="snap-canvas" style="display:block;width:100%;height:auto;"></canvas>
+      </div>
+      <p class="fineprint" id="trapped-legend">Green tiles, numbered in order, are the moves that get you advancing again. Scroll to see the whole board.</p>
+      <button class="btn-outline" onclick="closeTrapped()">← Back</button>
     </div>
   </div>
 </div>
@@ -152,6 +172,7 @@ var playerCanvasY = 0, playerCol = 2;
 var obstacles = [], popups = [];
 var nextSpawnAt = 0, spawnIndex = 0;
 var lastBattleMoveTime = 0, battleMoveInterval = 1500;
+var deathSnapshot = null;
 
 var TRAP_DIFF   = { easy:[70,180], medium:[110,240], hard:[150,300] };
 var BATTLE_DIFF = { easy:2500, medium:1500, hard:800 };
@@ -173,17 +194,55 @@ function getSavedName(){ return localStorage.getItem('kg_player_name')||''; }
 function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
 
 // ── Name moderation (App Store UGC compliance) ─────────────────────────────
-// Contact for content reports
+// Contact for content reports — change to your real email before shipping.
 var REPORT_EMAIL = 'apys502@gmail.com';
 
-// Base list of disallowed substrings (lowercased). Catches the word even when
-// padded with numbers/symbols by stripping non-letters first. Expand as needed.
+// Base list of disallowed substrings (lowercased). Used as a fallback and
+// merged with the larger open-source list loaded at startup (see loadWordlist).
 var BANNED_WORDS = [
   'fuck','shit','bitch','cunt','dick','cock','pussy','asshole','bastard',
   'slut','whore','fag','faggot','nigger','nigga','retard','rape','nazi',
   'hitler','kike','spic','chink','wank','twat','prick','douche','jizz',
   'cum','penis','vagina','boob','tits','sex','porn','anus','butt','damn'
 ];
+
+// Optionally load a larger open-source wordlist at startup.
+// Supports either a plain-text file (one word per line) OR the dsojevic
+// JSON format: [{ "match": "word1|word2", "severity": N, ... }, ...].
+// Host the file next to your index.html and set WORDLIST_URL to its path.
+var WORDLIST_URL = ''; // e.g. 'profanity.json'  (relative path on GitHub Pages)
+var MIN_SEVERITY = 2;  // for JSON lists: ignore mild (severity 1) words to cut false positives
+function loadWordlist(){
+  if(!WORDLIST_URL) return;
+  fetch(WORDLIST_URL)
+    .then(function(r){ return r.text(); })
+    .then(function(txt){
+      var words=[];
+      var trimmed=txt.replace(/^\uFEFF/,'').trim();
+      if(trimmed[0]==='['||trimmed[0]==='{'){
+        // dsojevic-style JSON
+        var data=JSON.parse(trimmed);
+        for(var i=0;i<data.length;i++){
+          var entry=data[i];
+          if(typeof entry.severity==='number' && entry.severity<MIN_SEVERITY) continue;
+          // "match" can be pipe-separated alternatives
+          String(entry.match||'').split('|').forEach(function(m){
+            m=m.trim().toLowerCase();
+            if(m) words.push(m);
+          });
+        }
+      } else {
+        // plain text, one word per line
+        words=trimmed.split(/\r?\n/)
+          .map(function(w){ return w.trim().toLowerCase(); })
+          .filter(function(w){ return w.length>0 && w[0]!=='#'; });
+      }
+      var set={};
+      BANNED_WORDS.concat(words).forEach(function(w){ set[w]=true; });
+      BANNED_WORDS=Object.keys(set);
+    })
+    .catch(function(){ /* keep fallback list */ });
+}
 // Common leetspeak substitutions normalized before checking
 function normalizeForFilter(s){
   return s.toLowerCase()
@@ -286,6 +345,9 @@ function getLBKey(){ return mode+'-'+difficulty; }
 
 // ── Start ──────────────────────────────────────────────────────────────────
 function startGame(){
+  // require a name (set on the home screen) before playing
+  var nm=getSavedName();
+  if(!nm || !isNameAllowed(nm)){ backToMenu(); menuEditName(true); return; }
   resize(); hideAll();
   document.getElementById('hud').style.display='flex';
   var labels={easy:'Easy',medium:'Medium',hard:'Hard'};
@@ -297,6 +359,13 @@ function startGame(){
   obstacles=[]; popups=[];
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
   for(var r=1;r<ROWS-1;r++) spawnRowAtCanvasY(playerCanvasY-r*cellH);
+  if(mode==='battle'){
+    // keep the knight's starting area clear: no enemy on its cell, and none in
+    // the two rows directly ahead (which would threaten it on move one)
+    obstacles=obstacles.filter(function(o){
+      return o.canvasY < playerCanvasY-2.5*cellH;
+    });
+  }
   nextSpawnAt=scrollPx+cellH;
   if(mode==='battle') planKnightMoves(true);
   gameState='playing';
@@ -353,7 +422,11 @@ function update(dt){
   var spawned=false;
   while(scrollPx>=nextSpawnAt){ spawnRowAtCanvasY(-cellH); nextSpawnAt+=cellH; spawned=true; }
   if(spawned&&mode==='battle') planKnightMoves(false);
-  obstacles=obstacles.filter(function(o){return o.alive&&o.canvasY<canvas.height+cellH;});
+  // Trap mode keeps a long trail of traps behind the knight (not just what's
+  // on screen) so the "Was I trapped?" analysis can look back through the lanes
+  // the knight already travelled. Off-screen traps still aren't drawn in-game.
+  var cullY=(mode==='trap')?(playerCanvasY+cellH*26):(canvas.height+cellH);
+  obstacles=obstacles.filter(function(o){return o.alive&&o.canvasY<cullY;});
 
   if(mode==='battle'){
     var now=Date.now();
@@ -492,10 +565,30 @@ function loseLife(){
   pendingScore=score;
   document.getElementById('hud').style.display='none';
   document.getElementById('final-score-txt').textContent='Score: '+score;
-  var ni=document.getElementById('name-input');
-  if(ni) ni.value=getSavedName();
-  var ne=document.getElementById('name-error');
-  if(ne) ne.style.display='none';
+  // The name is chosen on the home screen, so every run just auto-saves.
+  var saved=getSavedName();
+  saveScore(getLBKey(),saved,pendingScore);
+  var sn=document.getElementById('saved-name'); if(sn) sn.textContent=saved;
+  // Capture trap-mode death snapshot for "Was I trapped?"
+  var tb=document.getElementById('trapped-btn');
+  if(mode==='trap'){
+    var traps=[];
+    for(var ti=0;ti<obstacles.length;ti++){
+      if(obstacles[ti].alive&&obstacles[ti].pieceType==='trap')
+        traps.push({col:obstacles[ti].col,canvasY:obstacles[ti].canvasY});
+    }
+    var esc=computeEscapePath(playerCol,traps,playerCanvasY,cellH);
+    deathSnapshot={
+      playerCol:playerCol, playerCanvasY:playerCanvasY,
+      scrollPx:scrollPx, cellW:cellW, cellH:cellH,
+      w:canvas.width, h:canvas.height,
+      traps:traps, path:esc.path, escaped:esc.escaped
+    };
+    if(tb) tb.style.display='inline-block';
+  } else {
+    deathSnapshot=null;
+    if(tb) tb.style.display='none';
+  }
   showScreen('name-screen');
 }
 
@@ -558,9 +651,9 @@ function handleTap(e){
 function drawThreatCell(col,y){
   if(col<0||col>=COLS) return;
   if(y<-cellH||y>canvas.height) return;
-  ctx.fillStyle='rgba(220,80,80,0.18)';
+  ctx.fillStyle='rgba(90,20,20,0.55)';
   ctx.fillRect(col*cellW,y,cellW,cellH);
-  ctx.strokeStyle='rgba(220,80,80,0.5)'; ctx.lineWidth=1.5;
+  ctx.strokeStyle='rgba(150,40,40,0.55)'; ctx.lineWidth=1.5;
   ctx.strokeRect(col*cellW+1,y+1,cellW-2,cellH-2);
 }
 
@@ -655,6 +748,156 @@ function render(){
   }
 }
 
+// ── "Was I trapped?" — escape-path analysis & snapshot ─────────────────────
+// Work in player-relative rows (player = row 0). Forward = up = negative row.
+// In real play the board scrolls one row at a time, so "not trapped" should
+// mean the knight could ADVANCE forward again past the immediate wall — not
+// that it must solve the entire frozen field. We look for a route that gains a
+// few rows of forward progress (backtracking as deep as needed), and if that
+// exact target isn't met we still return the furthest-forward route found, so
+// there's essentially always a way forward to show. Returns {path, escaped}.
+function computeEscapePath(pCol,traps,pCanvasY,ch){
+  var occ={}, minTrapRel=Infinity;
+  for(var i=0;i<traps.length;i++){
+    var rr=Math.round((traps[i].canvasY-pCanvasY)/ch);
+    occ[traps[i].col+','+rr]=true;
+    if(rr<minTrapRel) minTrapRel=rr;
+  }
+  // Target: advance ~ADVANCE rows forward (so the route shows a real run, not a
+  // single hop), or clear the field if it's shallower. Backtrack as deep as the
+  // retained trail allows.
+  var ADVANCE=9;
+  var fieldTop=(traps.length?minTrapRel-1:-ADVANCE);
+  var escapeRel=Math.max(fieldTop,-ADVANCE);
+  var UP_LIMIT=fieldTop-1, DOWN_LIMIT=24, MAX_STEPS=44;
+
+  var visited={}; visited[pCol+',0']=true;
+  var queue=[{col:pCol,rr:0,path:[]}];
+  var best={rr:0,path:[]};               // furthest-forward route found so far
+  while(queue.length){
+    var cur=queue.shift();
+    if(cur.rr<=escapeRel) return {path:cur.path,escaped:true}; // good forward route
+    if(cur.rr<best.rr) best=cur;
+    if(cur.path.length>=MAX_STEPS) continue;
+    for(var k=0;k<L_DELTAS.length;k++){
+      var nc=cur.col+L_DELTAS[k][0], nr=cur.rr+L_DELTAS[k][1];
+      if(nc<0||nc>=COLS||nr<UP_LIMIT||nr>DOWN_LIMIT) continue;
+      var key=nc+','+nr;
+      if(visited[key]||occ[key]) continue;
+      visited[key]=true;
+      queue.push({col:nc,rr:nr,path:cur.path.concat([{col:nc,relRow:nr,dRow:L_DELTAS[k][1]}])});
+    }
+  }
+  // never give up: show the furthest-forward route we could find
+  return {path:best.path,escaped:best.rr<0};
+}
+
+function renderSnapshot(){
+  var s=deathSnapshot; if(!s) return {knightY:0};
+  var c=document.getElementById('snap-canvas'); if(!c) return {knightY:0};
+  var cx=c.getContext('2d');
+  var cw=s.cellW, ch=s.cellH;
+
+  // Player-relative grid (knight = relRow 0; forward/up = negative).
+  // The view shows: the trap wall AHEAD (up), the whole route, and a generous
+  // slice of the trail BEHIND the knight (down) — the room it backtracks into.
+  function trapRel(t){ return Math.round((t.canvasY-s.playerCanvasY)/ch); }
+  var routeRels=[0];
+  for(var pp=0;pp<s.path.length;pp++) routeRels.push(s.path[pp].relRow);
+  var relTop=Math.min.apply(null,routeRels), relBottom=Math.max.apply(null,routeRels);
+  var BEHIND_CAP=16;   // how many rows of trail to show behind the knight
+  for(var ti=0;ti<s.traps.length;ti++){
+    var tr=trapRel(s.traps[ti]);
+    if(tr<relTop) relTop=tr;                          // extend up to the full wall
+    if(tr>relBottom && tr<=BEHIND_CAP) relBottom=tr;  // extend down through the trail
+  }
+  relTop-=1; relBottom+=1;
+  var rows=relBottom-relTop+1;
+
+  c.width=COLS*cw; c.height=rows*ch;
+  function yOf(relRow){ return (relRow-relTop)*ch; }
+
+  cx.fillStyle='#1a1a2e'; cx.fillRect(0,0,c.width,c.height);
+
+  // checkerboard
+  for(var rr=relTop;rr<=relBottom;rr++){
+    for(var col=0;col<COLS;col++){
+      cx.fillStyle=((rr+col)%2===0)?'#2d2d4e':'#1e1e35';
+      cx.fillRect(col*cw,yOf(rr),cw,ch);
+    }
+  }
+
+  // traps within the rendered window, grid-aligned
+  var fs=Math.round(cw*0.55);
+  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.font='bold '+fs+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
+  for(var i=0;i<s.traps.length;i++){
+    var t=s.traps[i], rr2=trapRel(t);
+    if(rr2<relTop||rr2>relBottom) continue;
+    var ty=yOf(rr2);
+    cx.fillStyle='rgba(200,50,50,0.35)'; cx.fillRect(t.col*cw,ty,cw,ch);
+    cx.fillStyle=PIECES.trap.color;
+    cx.fillText(PIECES.trap.sym,t.col*cw+cw/2,ty+ch/2+2);
+  }
+
+  // escape route: every step green, numbered in move order
+  for(var p=0;p<s.path.length;p++){
+    var step=s.path[p], pcY=yOf(step.relRow);
+    cx.fillStyle='rgba(60,220,120,0.42)'; cx.fillRect(step.col*cw,pcY,cw,ch);
+    cx.strokeStyle='rgba(60,220,120,0.95)'; cx.lineWidth=2.5;
+    cx.strokeRect(step.col*cw+1.5,pcY+1.5,cw-3,ch-3);
+    cx.fillStyle='#d8ffe6';
+    cx.font='bold '+Math.round(cw*0.5)+'px system-ui';
+    cx.fillText(String(p+1),step.col*cw+cw/2,pcY+ch/2+1);
+  }
+
+  // player knight on top
+  var py=yOf(0);
+  cx.fillStyle='rgba(240,192,64,0.2)'; cx.fillRect(s.playerCol*cw,py,cw,ch);
+  cx.shadowColor='#f0c040'; cx.shadowBlur=14; cx.fillStyle='#f0c040';
+  cx.font='bold '+Math.round(cw*0.62)+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
+  cx.fillText('♞',s.playerCol*cw+cw/2,py+ch/2+2);
+  cx.shadowBlur=0;
+
+  return {knightY:py, canvasH:c.height};
+}
+
+function showTrapped(){
+  document.getElementById('name-screen').style.display='none';
+  var path=(deathSnapshot&&deathSnapshot.path)||[];
+  var forward=!!(deathSnapshot&&deathSnapshot.escaped);
+  var hasBacktrack=path.some(function(s){return s.dRow>0;});
+  var verdict=document.getElementById('trapped-verdict');
+  var sub=document.getElementById('trapped-sub');
+  var legend=document.getElementById('trapped-legend');
+  // There is always a way forward — the verdict is always "Nope".
+  if(verdict){ verdict.textContent='Nope'; verdict.style.color='#3cdc78'; }
+  if(path.length&&forward){
+    if(sub) sub.textContent=hasBacktrack
+      ? 'Not trapped \u2014 double back, then push forward.'
+      : 'You had a way out. Here\u2019s the route forward.';
+    if(legend) legend.textContent='Follow the green tiles in order to keep advancing. Scroll to see the whole board.';
+  } else {
+    if(sub) sub.textContent='Tight one \u2014 but here\u2019s the line that keeps you moving.';
+    if(legend) legend.textContent='Follow the green tiles in order. Scroll to see the whole board.';
+  }
+  showScreen('trapped-screen');
+  var info=renderSnapshot();
+  // start the scroll near the knight (usually low on the board), so the player
+  // sees where they died, then can scroll up through the route and trap walls.
+  var scroll=document.getElementById('snap-scroll'), cnv=document.getElementById('snap-canvas');
+  requestAnimationFrame(function(){
+    if(!scroll||!cnv||!cnv.width) return;
+    var disp=cnv.clientWidth/cnv.width;            // displayed px per canvas px
+    var knightDisp=(info.knightY||0)*disp;
+    scroll.scrollTop=Math.max(0,knightDisp-scroll.clientHeight*0.62);
+  });
+}
+function closeTrapped(){
+  document.getElementById('trapped-screen').style.display='none';
+  showScreen('name-screen');
+}
+
 // ── HUD & flow ─────────────────────────────────────────────────────────────
 function updateHUD(){ document.getElementById('score-display').textContent=score; }
 
@@ -712,17 +955,39 @@ function fetchOnlineScores(key){
     .catch(function(){ lbLoading=false; renderLB(); });
 }
 
-function submitScore(){
-  var name=(document.getElementById('name-input').value.trim()||'AAA').slice(0,7);
-  var err=document.getElementById('name-error');
-  if(!isNameAllowed(name)){
-    if(err) err.style.display='block';
-    return; // block submission; let the player edit
+// ── Home-screen name ────────────────────────────────────────────────────────
+function refreshMenuName(){
+  var name=getSavedName();
+  var setBox=document.getElementById('menu-name-set');
+  var entryBox=document.getElementById('menu-name-entry');
+  if(name && isNameAllowed(name)){
+    var d=document.getElementById('menu-name-display'); if(d) d.textContent=name;
+    if(setBox) setBox.style.display='flex';
+    if(entryBox) entryBox.style.display='none';
+  } else {
+    menuEditName(false);
   }
+}
+function menuEditName(forced){
+  var setBox=document.getElementById('menu-name-set');
+  var entryBox=document.getElementById('menu-name-entry');
+  var inp=document.getElementById('menu-name-input');
+  var err=document.getElementById('menu-name-error');
+  if(setBox) setBox.style.display='none';
+  if(entryBox) entryBox.style.display='flex';
+  if(inp){ inp.value=getSavedName()||''; try{inp.focus();}catch(e){} }
+  if(err){ err.textContent = forced===true ? 'Enter a name to play.' : 'Please enter a valid name.'; err.style.display = forced===true ? 'block' : 'none'; }
+}
+function saveMenuName(){
+  var inp=document.getElementById('menu-name-input');
+  var err=document.getElementById('menu-name-error');
+  var raw=(inp?inp.value:'').trim();
+  if(!raw){ if(err){ err.textContent='Please enter a name.'; err.style.display='block'; } return; }
+  var name=raw.slice(0,7);
+  if(!isNameAllowed(name)){ if(err){ err.textContent='Please choose a different name.'; err.style.display='block'; } return; }
   if(err) err.style.display='none';
   setSavedName(name);
-  saveScore(getLBKey(),name,pendingScore);
-  backToMenu();
+  refreshMenuName();
 }
 
 function selectLBSource(src){
@@ -800,13 +1065,13 @@ function renderLB(){
   }
 }
 
-function backToMenu(){hideAll();showScreen('menu-screen');}
+function backToMenu(){hideAll();showScreen('menu-screen');refreshMenuName();}
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
-  ['menu-screen','pause-screen','lb-screen','name-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('hud').style.display='none';
 }
-window.addEventListener('load',init);
+window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName(); });
 </script>
 </body>
 </html>
