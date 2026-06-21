@@ -221,6 +221,8 @@ var scrollPx = 0, scrollSpeed = 62;
 var playerCanvasY = 0, playerCol = 2;
 var obstacles = [], popups = [];
 var nextSpawnAt = 0, spawnIndex = 0;
+var trapTrail = [];   // recent knight move positions {col, worldY} for the death snapshot
+var trapReachA = [], trapReachB = [];   // reachable open cols in the last two spawned trap rows
 var lastBattleMoveTime = 0, battleMoveInterval = 1500;
 var deathSnapshot = null;
 
@@ -257,6 +259,7 @@ var BUG_REPORT_URL = 'https://forms.gle/mquEdF4V6xkXFKSR7';
 // generates here and re-deploy. Dates are 'YYYY-MM-DD'.
 var PATCH_NOTES = [
   { version: '0.2.3', date: '2026-06-21', notes: '• Added patch notes\n• Added bug report' }
+  { version: "0.2.4", date: "2026-06-21", notes: "Okay maybe I was wrong, there were, in fact, impossible arrangements in Trap mode, but that should hopefully be fixed now.\n\n• Modified procedural trap generation logic to hopefully never fully trap the player\n• \"Was I trapped?\" snapshot now shows your last 10 moves." },
 ];
 
 // Base list of disallowed substrings (lowercased). Used as a fallback and
@@ -420,6 +423,8 @@ function startGame(){
   playerCol=2; playerCanvasY=canvas.height-4*cellH;
   obstacles=[]; popups=[];
   spawnIndex=0; lastBattleMoveTime=Date.now(); lastTime=null;
+  trapTrail=[];   // world positions of the knight's recent moves, for the death snapshot
+  trapReachA=(mode==='trap')?[playerCol]:[]; trapReachB=[];   // seed the reachability frontier from the knight
   for(var r=1;r<ROWS-1;r++) spawnRowAtCanvasY(playerCanvasY-r*cellH);
   if(mode==='battle'){
     // keep the knight's starting area clear: no enemy on its cell, and none in
@@ -428,12 +433,27 @@ function startGame(){
       return o.canvasY < playerCanvasY-2.5*cellH;
     });
   }
-  nextSpawnAt=scrollPx+cellH;
+  // Trap: start play-spawns one row beyond the topmost initial row (which sits at
+  // world -2*cellH) so rows stay exactly one apart and never merge — the repair's
+  // reachability bookkeeping assumes that clean one-row spacing.
+  nextSpawnAt=scrollPx+(mode==='trap'?2*cellH:cellH);
   if(mode==='battle') planKnightMoves(true);
   gameState='playing';
   updateHUD();
   if(animFrame) cancelAnimationFrame(animFrame);
   animFrame=requestAnimationFrame(loop);
+}
+
+// Of the new row's open columns, which can the knight actually reach from the
+// previous two rows' reachable cells? A one-row-forward L-move shifts ±2 columns;
+// a two-row-forward L-move shifts ±1. (rA = row just behind, rB = two rows behind.)
+function trapReachableNew(openCols,rA,rB){
+  var nr=[];
+  for(var i=0;i<openCols.length;i++){
+    var c=openCols[i];
+    if(rA.indexOf(c-2)>=0||rA.indexOf(c+2)>=0||rB.indexOf(c-1)>=0||rB.indexOf(c+1)>=0) nr.push(c);
+  }
+  return nr;
 }
 
 function spawnRowAtCanvasY(cy){
@@ -446,6 +466,26 @@ function spawnRowAtCanvasY(cy){
     var open={};
     for(var k=0;k<Math.min(numOpen,reachable.length);k++) open[reachable[k]]=true;
     if(Object.keys(open).length<2&&reachable.length>=2){open[reachable[0]]=true;open[reachable[1]]=true;}
+
+    // Solvability repair: keep the random row, but if NONE of its open cells are
+    // reachable from the frontier (the row would seal the board), open one trap
+    // that restores a forward route. Fires on ~0.3% of rows, so the feel is intact.
+    var openCols=[]; for(var c0=0;c0<COLS;c0++) if(open[c0]) openCols.push(c0);
+    var nr=trapReachableNew(openCols,trapReachA,trapReachB);
+    if(nr.length===0 && (trapReachA.length||trapReachB.length)){
+      var cand=null,a,b;
+      for(var ai=0;ai<trapReachA.length&&cand===null;ai++){
+        a=trapReachA[ai];
+        if(a-2>=0) cand=a-2; else if(a+2<COLS) cand=a+2;
+      }
+      for(var bi=0;bi<trapReachB.length&&cand===null;bi++){
+        b=trapReachB[bi];
+        if(b-1>=0) cand=b-1; else if(b+1<COLS) cand=b+1;
+      }
+      if(cand!==null && !open[cand]){ open[cand]=true; nr.push(cand); }
+    }
+    trapReachB=trapReachA; trapReachA=nr;
+
     for(var c=0;c<COLS;c++) if(!open[c]) obstacles.push({col:c,canvasY:cy,pieceType:'trap',alive:true});
   } else {
     if(Math.random()<0.55){
@@ -640,11 +680,17 @@ function loseLife(){
         traps.push({col:obstacles[ti].col,canvasY:obstacles[ti].canvasY});
     }
     var esc=computeEscapePath(playerCol,traps,playerCanvasY,cellH);
+    // Convert the recent move trail (stored in world space) into the death frame.
+    var trail=[], startI=Math.max(0,trapTrail.length-10);
+    for(var mi=startI;mi<trapTrail.length;mi++){
+      var dY=trapTrail[mi].worldY+scrollPx;                 // death-frame canvasY
+      trail.push({col:trapTrail[mi].col, relRow:Math.round((dY-playerCanvasY)/cellH), n:mi-startI+1});
+    }
     deathSnapshot={
       playerCol:playerCol, playerCanvasY:playerCanvasY,
       scrollPx:scrollPx, cellW:cellW, cellH:cellH,
       w:canvas.width, h:canvas.height,
-      traps:traps, path:esc.path, escaped:esc.escaped
+      traps:traps, path:esc.path, escaped:esc.escaped, reason:esc.reason, trail:trail
     };
     if(tb) tb.style.display='inline-block';
   } else {
@@ -704,6 +750,11 @@ function handleTap(e){
     score=trapScore;
   }
   playerCol=move.col; playerCanvasY=move.canvasY;
+  if(mode==='trap'){
+    // store in world space (scroll-invariant) so we can place it in the death frame
+    trapTrail.push({col:playerCol, worldY:playerCanvasY-scrollPx});
+    if(trapTrail.length>12) trapTrail.shift();
+  }
   playMoveSound();
   checkCollision();
   updateHUD();
@@ -812,34 +863,35 @@ function render(){
 
 // ── "Was I trapped?" — escape-path analysis & snapshot ─────────────────────
 // Work in player-relative rows (player = row 0). Forward = up = negative row.
-// In real play the board scrolls one row at a time, so "not trapped" should
-// mean the knight could ADVANCE forward again past the immediate wall — not
-// that it must solve the entire frozen field. We look for a route that gains a
-// few rows of forward progress (backtracking as deep as needed), and if that
-// exact target isn't met we still return the furthest-forward route found, so
-// there's essentially always a way forward to show. Returns {path, escaped}.
+// We BFS over knight L-moves for a genuine route that threads PAST the wall of
+// traps ahead (clearing the captured field), letting the knight double back
+// (down/sideways) as deep as the retained board allows (~10+ rows). We report:
+//   forward  – a clean line out using tiles still on-screen
+//   deepback – a real way out, but it doubles back through tiles already off the
+//              bottom of the screen (the player couldn't realistically use them)
+//   sealed   – no legal route out at all; genuinely trapped
+// Returns {path, escaped, reason}.
 function computeEscapePath(pCol,traps,pCanvasY,ch){
-  var occ={}, minTrapRel=Infinity;
+  var occ={}, minTrapRel=Infinity, maxTrapRel=-Infinity;
   for(var i=0;i<traps.length;i++){
     var rr=Math.round((traps[i].canvasY-pCanvasY)/ch);
     occ[traps[i].col+','+rr]=true;
     if(rr<minTrapRel) minTrapRel=rr;
+    if(rr>maxTrapRel) maxTrapRel=rr;
   }
-  // Target: advance ~ADVANCE rows forward (so the route shows a real run, not a
-  // single hop), or clear the field if it's shallower. Backtrack as deep as the
-  // retained trail allows.
-  var ADVANCE=9;
-  var fieldTop=(traps.length?minTrapRel-1:-ADVANCE);
-  var escapeRel=Math.max(fieldTop,-ADVANCE);
-  var UP_LIMIT=fieldTop-1, DOWN_LIMIT=24, MAX_STEPS=44;
+  if(!traps.length) return {path:[],escaped:true,reason:'forward'};
+  var escapeRel=Math.min(minTrapRel-1,-1);          // step past the furthest trap ahead
+  var UP_LIMIT=escapeRel-1;                          // headroom just past the wall
+  var DOWN_LIMIT=Math.max(4,Math.min(maxTrapRel,22));// double back as deep as retained data
+  var ONSCREEN_BACK=4;                               // rows visible below the knight at death
+  var MAX_STEPS=70;
 
   var visited={}; visited[pCol+',0']=true;
-  var queue=[{col:pCol,rr:0,path:[]}];
-  var best={rr:0,path:[]};               // furthest-forward route found so far
+  var queue=[{col:pCol,rr:0,path:[],maxBack:0}];
   while(queue.length){
     var cur=queue.shift();
-    if(cur.rr<=escapeRel) return {path:cur.path,escaped:true}; // good forward route
-    if(cur.rr<best.rr) best=cur;
+    if(cur.rr<=escapeRel)
+      return {path:cur.path,escaped:true,reason:(cur.maxBack>ONSCREEN_BACK?'deepback':'forward')};
     if(cur.path.length>=MAX_STEPS) continue;
     for(var k=0;k<L_DELTAS.length;k++){
       var nc=cur.col+L_DELTAS[k][0], nr=cur.rr+L_DELTAS[k][1];
@@ -847,11 +899,10 @@ function computeEscapePath(pCol,traps,pCanvasY,ch){
       var key=nc+','+nr;
       if(visited[key]||occ[key]) continue;
       visited[key]=true;
-      queue.push({col:nc,rr:nr,path:cur.path.concat([{col:nc,relRow:nr,dRow:L_DELTAS[k][1]}])});
+      queue.push({col:nc,rr:nr,path:cur.path.concat([{col:nc,relRow:nr,dRow:L_DELTAS[k][1]}]),maxBack:Math.max(cur.maxBack,nr)});
     }
   }
-  // never give up: show the furthest-forward route we could find
-  return {path:best.path,escaped:best.rr<0};
+  return {path:[],escaped:false,reason:'sealed'};
 }
 
 function renderSnapshot(){
@@ -864,10 +915,12 @@ function renderSnapshot(){
   // The view shows: the trap wall AHEAD (up), the whole route, and a generous
   // slice of the trail BEHIND the knight (down) — the room it backtracks into.
   function trapRel(t){ return Math.round((t.canvasY-s.playerCanvasY)/ch); }
+  var trail=s.trail||[];
   var routeRels=[0];
   for(var pp=0;pp<s.path.length;pp++) routeRels.push(s.path[pp].relRow);
+  for(var qq=0;qq<trail.length;qq++) routeRels.push(trail[qq].relRow);
   var relTop=Math.min.apply(null,routeRels), relBottom=Math.max.apply(null,routeRels);
-  var BEHIND_CAP=16;   // how many rows of trail to show behind the knight
+  var BEHIND_CAP=Math.max(16,relBottom);   // include the whole move trail behind the knight
   for(var ti=0;ti<s.traps.length;ti++){
     var tr=trapRel(s.traps[ti]);
     if(tr<relTop) relTop=tr;                          // extend up to the full wall
@@ -913,6 +966,17 @@ function renderSnapshot(){
     cx.fillText(String(p+1),step.col*cw+cw/2,pcY+ch/2+1);
   }
 
+  // player's actual path: thin connecting line through the last moves
+  if(trail.length>1){
+    cx.strokeStyle='rgba(111,211,255,0.55)'; cx.lineWidth=2;
+    cx.beginPath();
+    for(var li=0;li<trail.length;li++){
+      var lx=trail[li].col*cw+cw*0.5, ly=yOf(trail[li].relRow)+ch*0.5;
+      if(li===0) cx.moveTo(lx,ly); else cx.lineTo(lx,ly);
+    }
+    cx.stroke();
+  }
+
   // player knight on top
   var py=yOf(0);
   cx.fillStyle='rgba(240,192,64,0.2)'; cx.fillRect(s.playerCol*cw,py,cw,ch);
@@ -921,27 +985,66 @@ function renderSnapshot(){
   cx.fillText('♞',s.playerCol*cw+cw/2,py+ch/2+2);
   cx.shadowBlur=0;
 
+  // last-10-moves: cyan badges in the top-left corner of each tile. Squares the
+  // knight landed on more than once list every move number (e.g. "4,10") in one
+  // pill, instead of a later move hiding an earlier one.
+  var cellMoves={};
+  for(var mi=0;mi<trail.length;mi++){
+    var m=trail[mi]; if(m.relRow<relTop||m.relRow>relBottom) continue;
+    var ck=m.col+','+m.relRow;
+    (cellMoves[ck]=cellMoves[ck]||{col:m.col,relRow:m.relRow,ns:[]}).ns.push(m.n);
+  }
+  var bh=Math.round(ch*0.30), bx0=Math.round(cw*0.09), by0=Math.round(ch*0.10);
+  var bfont='bold '+Math.round(cw*0.22)+'px system-ui';
+  cx.lineWidth=1.5; cx.textAlign='left'; cx.textBaseline='middle';
+  for(var ck2 in cellMoves){
+    var cell=cellMoves[ck2];
+    cell.ns.sort(function(a,b){return a-b;});
+    var label=cell.ns.join(',');
+    cx.font=bfont;
+    var pad=Math.round(cw*0.09), rad=bh/2;
+    var bw=Math.ceil(cx.measureText(label).width)+pad*2;
+    var bx=cell.col*cw+bx0, by=yOf(cell.relRow)+by0;
+    cx.beginPath();
+    cx.moveTo(bx+rad,by);
+    cx.arcTo(bx+bw,by,bx+bw,by+bh,rad);
+    cx.arcTo(bx+bw,by+bh,bx,by+bh,rad);
+    cx.arcTo(bx,by+bh,bx,by,rad);
+    cx.arcTo(bx,by,bx+bw,by,rad);
+    cx.closePath();
+    cx.fillStyle='rgba(12,22,40,0.9)'; cx.fill();
+    cx.strokeStyle='#6fd3ff'; cx.stroke();
+    cx.fillStyle='#bfeaff';
+    cx.fillText(label,bx+pad,by+bh/2+0.5);
+  }
+  cx.textAlign='center'; cx.textBaseline='middle';
+
   return {knightY:py, canvasH:c.height};
 }
 
 function showTrapped(){
   document.getElementById('name-screen').style.display='none';
-  var path=(deathSnapshot&&deathSnapshot.path)||[];
-  var forward=!!(deathSnapshot&&deathSnapshot.escaped);
+  var snap=deathSnapshot||{};
+  var escaped=!!snap.escaped, reason=snap.reason||'', path=snap.path||[];
   var hasBacktrack=path.some(function(s){return s.dRow>0;});
   var verdict=document.getElementById('trapped-verdict');
   var sub=document.getElementById('trapped-sub');
   var legend=document.getElementById('trapped-legend');
-  // There is always a way forward — the verdict is always "Nope".
-  if(verdict){ verdict.textContent='Nope'; verdict.style.color='#3cdc78'; }
-  if(path.length&&forward){
-    if(sub) sub.textContent=hasBacktrack
-      ? 'Not trapped \u2014 double back, then push forward.'
-      : 'You had a way out. Here\u2019s the route forward.';
-    if(legend) legend.textContent='Follow the green tiles in order to keep advancing. Scroll to see the whole board.';
+  if(escaped){
+    if(reason==='deepback'){
+      if(verdict){ verdict.textContent='Nope, just'; verdict.style.color='#ffd060'; }
+      if(sub) sub.textContent='Technically escapable \u2014 but the only line out doubled back through tiles already off the bottom of the screen.';
+    } else {
+      if(verdict){ verdict.textContent='Nope'; verdict.style.color='#3cdc78'; }
+      if(sub) sub.textContent=hasBacktrack
+        ? 'You had a way out \u2014 double back, then push forward.'
+        : 'You had a clean line forward.';
+    }
+    if(legend) legend.textContent='Green = the escape route in order. Cyan = your last 10 moves. Scroll to see the whole board.';
   } else {
-    if(sub) sub.textContent='Tight one \u2014 but here\u2019s the line that keeps you moving.';
-    if(legend) legend.textContent='Follow the green tiles in order. Scroll to see the whole board.';
+    if(verdict){ verdict.textContent='Yep'; verdict.style.color='#ff8a5c'; }
+    if(sub) sub.textContent='Genuinely trapped \u2014 boxed in, with no legal jump out of that square.';
+    if(legend) legend.textContent='Cyan = your last 10 moves. Red = traps. No forward line existed from here.';
   }
   showScreen('trapped-screen');
   var info=renderSnapshot();
