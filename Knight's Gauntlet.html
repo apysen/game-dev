@@ -42,7 +42,21 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 .lb-source-row{display:flex;gap:10px;margin-bottom:10px;}
 .lb-source-tab{background:#16213e;color:#aaa;border:2px solid #333;border-radius:10px;padding:8px 22px;font-size:15px;font-weight:700;cursor:pointer;}
 .lb-source-tab.active{border-color:#f0c040;color:#f0c040;}
-#name-input,#menu-name-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
+#name-input,#menu-name-input,#patch-ver-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
+.corner-btn{position:absolute;bottom:14px;background:#16213e;color:#9aa3c0;border:1px solid #2a2f4a;border-radius:10px;padding:7px 11px;font-size:11px;font-weight:600;cursor:pointer;z-index:25;}
+.corner-btn:active{background:#1f2747;}
+#bug-btn{left:14px;}
+#patch-btn{right:14px;}
+.patch-arrow{position:absolute;top:50%;transform:translateY(-50%);background:rgba(240,192,64,0.12);color:#f0c040;border:none;border-radius:50%;width:38px;height:38px;font-size:24px;line-height:1;cursor:pointer;z-index:30;}
+.patch-arrow:disabled{opacity:0.18;cursor:default;}
+#patch-prev{left:6px;}
+#patch-next{right:6px;}
+#patch-card{background:#16213e;border:1px solid #2a2f4a;border-radius:12px;padding:16px;width:262px;max-width:78%;min-height:160px;max-height:50vh;overflow-y:auto;text-align:left;}
+.pn-ver{font-size:18px;font-weight:800;color:#f0c040;}
+.pn-date{font-size:12px;color:#888;margin-bottom:10px;}
+.pn-body{font-size:14px;color:#ddd;line-height:1.6;white-space:pre-wrap;}
+#patch-notes-input,#compose-snippet{background:#0f1626;border:2px solid #f0c040;border-radius:8px;color:#fff;width:262px;max-width:80%;padding:10px;font-size:14px;font-family:inherit;resize:vertical;}
+#compose-snippet{border-color:#333;font-size:11px;height:84px;}
 #name-input::placeholder,#menu-name-input::placeholder{color:#555;}
 .fineprint{font-size:10px;color:#666;max-width:240px;line-height:1.4;text-align:center;}
 </style>
@@ -90,6 +104,42 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       </div>
       <button class="btn" onclick="startGame()">PLAY</button>
       <button class="btn-outline" onclick="showLeaderboard()">🏆 Leaderboard</button>
+      <button class="corner-btn" id="bug-btn" onclick="openBugReport()">🐞 Bug report</button>
+      <button class="corner-btn" id="patch-btn" onclick="openPatchNotes()">📋 Patch notes</button>
+    </div>
+
+    <!-- PATCH NOTES (viewer) -->
+    <div class="overlay" id="patch-screen" style="display:none">
+      <h2>📋 Patch Notes</h2>
+      <button class="patch-arrow" id="patch-prev" onclick="patchFlip(-1)">‹</button>
+      <div id="patch-card">
+        <div class="pn-ver" id="pn-ver"></div>
+        <div class="pn-date" id="pn-date"></div>
+        <div class="pn-body" id="pn-body"></div>
+      </div>
+      <button class="patch-arrow" id="patch-next" onclick="patchFlip(1)">›</button>
+      <p id="patch-pager" style="font-size:11px;color:#666;margin:0;"></p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-outline" style="font-size:12px" onclick="backToMenu()">← Back</button>
+        <button class="btn-outline" id="patch-add-btn" style="font-size:12px;display:none" onclick="openCompose()">+ Add note</button>
+      </div>
+    </div>
+
+    <!-- PATCH NOTES (composer — author mode only) -->
+    <div class="overlay" id="patch-compose" style="display:none">
+      <h2>New Patch Note</h2>
+      <p style="font-size:12px;color:#888;margin:0;">Dated <b id="compose-date" style="color:#f0c040;"></b></p>
+      <input type="text" id="patch-ver-input" maxlength="14" placeholder="Version (e.g. 1.2.0)" autocomplete="off" spellcheck="false">
+      <textarea id="patch-notes-input" placeholder="What changed? One item per line…" rows="5"></textarea>
+      <p id="compose-error" style="font-size:12px;color:#e05050;display:none;margin:0;">Enter a version and some notes.</p>
+      <div id="compose-snippet-wrap" style="display:none;flex-direction:column;align-items:center;gap:6px;">
+        <p style="font-size:11px;color:#888;margin:0;max-width:262px;text-align:center;">Saved &amp; previewing. To publish to everyone, paste this into the <b>PATCH_NOTES</b> array in the source:</p>
+        <textarea id="compose-snippet" readonly></textarea>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn" onclick="saveCompose()">Save</button>
+        <button class="btn-outline" onclick="openPatchNotes()">Done</button>
+      </div>
     </div>
 
     <!-- PAUSE -->
@@ -196,6 +246,18 @@ function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
 // ── Name moderation (App Store UGC compliance) ─────────────────────────────
 // Contact for content reports — change to your real email before shipping.
 var REPORT_EMAIL = 'apys502@gmail.com';
+
+// ── Bug report + Patch notes config ─────────────────────────────────────────
+// Replace with your Google Form share link (File ▸ Send ▸ link, or "Send" ▸ 🔗).
+var BUG_REPORT_URL = 'https://forms.gle/mquEdF4V6xkXFKSR7';
+
+// Canonical patch notes that ship to everyone. Newest can go anywhere — the
+// viewer sorts by date. To add one: author it in-app (visit the page with
+// #author in the URL ▸ Patch notes ▸ "+ Add note"), then paste the snippet it
+// generates here and re-deploy. Dates are 'YYYY-MM-DD'.
+var PATCH_NOTES = [
+  { version: '0.2.3', date: '2026-06-21', notes: '• Added patch notes\n• Added bug report' }
+];
 
 // Base list of disallowed substrings (lowercased). Used as a fallback and
 // merged with the larger open-source list loaded at startup (see loadWordlist).
@@ -1066,9 +1128,87 @@ function renderLB(){
 }
 
 function backToMenu(){hideAll();showScreen('menu-screen');refreshMenuName();}
+
+// ── Bug report + Patch notes ────────────────────────────────────────────────
+function openBugReport(){
+  if(/YOUR-FORM-ID/.test(BUG_REPORT_URL)){ alert('Set BUG_REPORT_URL to your Google Form link.'); return; }
+  window.open(BUG_REPORT_URL,'_blank','noopener');
+}
+
+var patchList=[], patchIdx=0;
+function isAuthorMode(){ return /author/i.test(location.hash); }
+function getLocalPatchNotes(){ try{ return JSON.parse(localStorage.getItem('kg_patchnotes')||'[]'); }catch(e){ return []; } }
+function setLocalPatchNotes(a){ try{ localStorage.setItem('kg_patchnotes',JSON.stringify(a)); }catch(e){} }
+function buildPatchList(){
+  var all=PATCH_NOTES.concat(getLocalPatchNotes()), seen={}, out=[];
+  for(var i=0;i<all.length;i++){ var v=all[i].version; if(!v||seen[v]) continue; seen[v]=1; out.push(all[i]); }
+  out.sort(function(a,b){ return a.date<b.date?1:(a.date>b.date?-1:0); }); // newest first
+  return out;
+}
+function fmtDate(iso){
+  var p=String(iso).split('-'); if(p.length!==3) return iso;
+  var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(p[1],10)-1]||'';
+  return mo+' '+parseInt(p[2],10)+', '+p[0];
+}
+function todayISO(){
+  var d=new Date(), m=('0'+(d.getMonth()+1)).slice(-2), day=('0'+d.getDate()).slice(-2);
+  return d.getFullYear()+'-'+m+'-'+day;
+}
+function openPatchNotes(){
+  hideAll();
+  patchList=buildPatchList(); patchIdx=0;
+  document.getElementById('patch-add-btn').style.display=isAuthorMode()?'inline-block':'none';
+  renderPatch();
+  showScreen('patch-screen');
+}
+function renderPatch(){
+  var prev=document.getElementById('patch-prev'), next=document.getElementById('patch-next');
+  if(!patchList.length){
+    document.getElementById('pn-ver').textContent='—';
+    document.getElementById('pn-date').textContent='';
+    document.getElementById('pn-body').textContent='No patch notes yet.';
+    document.getElementById('patch-pager').textContent='';
+    prev.disabled=true; next.disabled=true; return;
+  }
+  if(patchIdx<0) patchIdx=0;
+  if(patchIdx>=patchList.length) patchIdx=patchList.length-1;
+  var n=patchList[patchIdx];
+  document.getElementById('pn-ver').textContent='v'+n.version;
+  document.getElementById('pn-date').textContent=fmtDate(n.date);
+  document.getElementById('pn-body').textContent=n.notes;
+  document.getElementById('patch-pager').textContent=(patchIdx+1)+' / '+patchList.length;
+  prev.disabled=(patchIdx<=0);                    // newest is index 0
+  next.disabled=(patchIdx>=patchList.length-1);
+  document.getElementById('patch-card').scrollTop=0;
+}
+function patchFlip(d){ patchIdx+=d; renderPatch(); }
+
+function openCompose(){
+  hideAll();
+  document.getElementById('compose-date').textContent=fmtDate(todayISO());
+  document.getElementById('patch-ver-input').value='';
+  document.getElementById('patch-notes-input').value='';
+  document.getElementById('compose-error').style.display='none';
+  document.getElementById('compose-snippet-wrap').style.display='none';
+  showScreen('patch-compose');
+}
+function saveCompose(){
+  var ver=document.getElementById('patch-ver-input').value.trim();
+  var notes=document.getElementById('patch-notes-input').value.replace(/\s+$/,'');
+  var err=document.getElementById('compose-error');
+  if(!ver||!notes.trim()){ if(err) err.style.display='block'; return; }
+  if(err) err.style.display='none';
+  var iso=todayISO(), entry={version:ver,date:iso,notes:notes};
+  var local=getLocalPatchNotes().filter(function(e){ return e.version!==ver; });
+  local.push(entry); setLocalPatchNotes(local);
+  patchList=buildPatchList();
+  var snip='  { version: '+JSON.stringify(ver)+', date: '+JSON.stringify(iso)+', notes: '+JSON.stringify(notes)+' },';
+  document.getElementById('compose-snippet').value=snip;
+  document.getElementById('compose-snippet-wrap').style.display='flex';
+}
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
-  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('hud').style.display='none';
 }
 window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName(); });
