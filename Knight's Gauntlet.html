@@ -186,7 +186,6 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
         </div>
       </div>
       <ul id="lb-list"></ul>
-      <p class="fineprint" id="lb-online-note">Online scores are Hard &amp; Grandmaster only.</p>
       <button class="btn-outline" onclick="backToMenu()">← Back</button>
       <p style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:100%;text-align:center;font-size:10px;color:#666;margin:0;"><a id="report-link" href="#" style="color:#888;text-decoration:underline;">Report an inappropriate name</a></p>
     </div>
@@ -1196,7 +1195,6 @@ function selectLBSource(src){
   document.getElementById('lbsrc-online').classList.toggle('active',src==='online');
   document.getElementById('lb-cats-personal').style.display = src==='personal' ? 'flex' : 'none';
   document.getElementById('lb-cats-online').style.display   = src==='online'   ? 'flex' : 'none';
-  document.getElementById('lb-online-note').style.display   = src==='online'   ? 'block' : 'none';
   if(src==='online'&&!/-(hard|grandmaster)$/.test(lbTab)) lbTab=mode+'-hard';
   highlightCatTab();
   refreshLB();
@@ -1209,7 +1207,6 @@ function showLeaderboard(){
   document.getElementById('lbsrc-online').classList.add('active');
   document.getElementById('lb-cats-personal').style.display='none';
   document.getElementById('lb-cats-online').style.display='flex';
-  document.getElementById('lb-online-note').style.display='block';
   lbTab=/^(hard|grandmaster)$/.test(difficulty)?(mode+'-'+difficulty):(mode+'-hard');
   highlightCatTab();
   showScreen('lb-screen');
