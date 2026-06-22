@@ -207,6 +207,8 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     </div>
   </div>
 </div>
+<!-- Real config (Supabase, email, bug-report URL, patch notes) lives here. -->
+<script src="config.js"></script>
 <script>
 var canvas, ctx, cellW, cellH;
 var COLS = 5, ROWS = 10;
@@ -244,23 +246,23 @@ var QUEEN_ADJ = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 function getSavedName(){ return localStorage.getItem('kg_player_name')||''; }
 function setSavedName(n){ localStorage.setItem('kg_player_name',n); }
 
-// ── Name moderation (App Store UGC compliance) ─────────────────────────────
-// Contact for content reports — change to your real email before shipping.
-var REPORT_EMAIL = 'apys502@gmail.com';
+// ── App config ─────────────────────────────────────────────────────────────
+// Real values live in config.js (loaded before this script) so they survive
+// edits to this file. Each line falls back to a placeholder if config.js is
+// missing, so the page still loads.
+var KGC = window.KG_CONFIG || {};
 
-// ── Bug report + Patch notes config ─────────────────────────────────────────
-// Replace with your Google Form share link (File ▸ Send ▸ link, or "Send" ▸ 🔗).
-var BUG_REPORT_URL = 'https://forms.gle/mquEdF4V6xkXFKSR7';
+// Contact for content reports (App Store UGC compliance).
+var REPORT_EMAIL = KGC.REPORT_EMAIL || 'youremail@example.com';
 
-// Canonical patch notes that ship to everyone. Newest can go anywhere — the
-// viewer sorts by date. To add one: author it in-app (visit the page with
-// #author in the URL ▸ Patch notes ▸ "+ Add note"), then paste the snippet it
-// generates here and re-deploy. Dates are 'YYYY-MM-DD'.
-var PATCH_NOTES = [
+// Google Form share link for the bug-report button.
+var BUG_REPORT_URL = KGC.BUG_REPORT_URL || 'https://forms.gle/YOUR-FORM-ID';
 
-  { version: "0.2.5", date: "2026-06-21", notes: "• Removed save name button so you can hit play as soon as you enter your name\n• Reworded the legend on the \"Was I trapped?\" snapshot to improve clarity" },
-  { version: '0.2.4', date: '2026-06-21', notes: 'Okay maybe I was wrong, there were, in fact, impossible arrangements in Trap mode, but that should hopefully be fixed now.\n\n• Modified procedural trap generation logic to hopefully never fully trap the player\n• \"Was I trapped?\" snapshot now shows your last 10 moves.' },
-  { version: '0.2.3', date: '2026-06-21', notes: '• Added patch notes\n• Added bug report' },
+// Patch notes shown to everyone. Edit these in config.js (newest first; the
+// viewer also sorts by date). To author in-app, visit the page with #author in
+// the URL ▸ Patch notes ▸ "+ Add note", then paste the snippet into config.js.
+var PATCH_NOTES = KGC.PATCH_NOTES || [
+  { version: '0.0.0', date: '2026-01-01', notes: 'Placeholder — set PATCH_NOTES in config.js.' }
 ];
 
 // Base list of disallowed substrings (lowercased). Used as a fallback and
@@ -327,8 +329,10 @@ function isNameAllowed(name){
 }
 
 // ── Supabase config ────────────────────────────────────────────────────────
-var SUPABASE_URL = 'https://vpdusjnqljkeccxtfgqn.supabase.co';
-var SUPABASE_KEY = 'sb_publishable_ikdOhTza0eO9U_Ppu1kB1A_QbuP6R5N';
+// URL + anon (publishable) key live in config.js. The anon key is meant to be
+// public; data is protected by Row Level Security on Supabase, not by secrecy.
+var SUPABASE_URL = KGC.SUPABASE_URL || 'https://YOUR-PROJECT.supabase.co';
+var SUPABASE_KEY = KGC.SUPABASE_KEY || 'YOUR-ANON-PUBLIC-KEY';
 function sbHeaders(){
   return {'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
 }
@@ -1045,7 +1049,7 @@ function showTrapped(){
   var legend=document.getElementById('trapped-legend');
   if(escaped){
     if(reason==='deepback'){
-      if(verdict){ verdict.textContent='Nope'; verdict.style.color='#ffd060'; }
+      if(verdict){ verdict.textContent='Nope, just'; verdict.style.color='#ffd060'; }
       if(sub) sub.textContent='Technically escapable \u2014 but the only line out doubled back through tiles already off the bottom of the screen.';
     } else {
       if(verdict){ verdict.textContent='Nope'; verdict.style.color='#3cdc78'; }
@@ -1054,14 +1058,16 @@ function showTrapped(){
         : 'You had a clean line forward.';
     }
     if(legend) legend.innerHTML=
-      '<b style="color:#3cdc78">Green squares</b> &mdash; a safe path you could have taken, numbered in order you\u2019d play them<br>'+
-      '<b style="color:#6fd3ff">Blue circles</b> &mdash; the last 10 squares you landed on<br>'+
+      '<b style="color:#3cdc78">Green squares</b> &mdash; a safe path you could have taken, numbered in the order you\u2019d play them<br>'+
+      '<b style="color:#6fd3ff">Blue numbers</b> &mdash; the last 10 squares you actually landed on (1 = oldest, up to 10 = where you died)<br>'+
+      '<b style="color:#e06666">Red \u2715</b> &mdash; traps that end your run<br>'+
       'Scroll up and down to see the whole board.';
   } else {
     if(verdict){ verdict.textContent='Yep'; verdict.style.color='#ff8a5c'; }
     if(sub) sub.textContent='Genuinely trapped \u2014 boxed in, with no legal jump out of that square.';
     if(legend) legend.innerHTML=
-      '<b style="color:#6fd3ff">Blue numbers</b> &mdash; the last 10 squares you landed on<br>'+
+      '<b style="color:#6fd3ff">Blue numbers</b> &mdash; the last 10 squares you actually landed on (1 = oldest, up to 10 = where you died)<br>'+
+      '<b style="color:#e06666">Red \u2715</b> &mdash; traps that end your run<br>'+
       'There was no safe square within a knight\u2019s move of where you ended up.';
   }
   showScreen('trapped-screen');
