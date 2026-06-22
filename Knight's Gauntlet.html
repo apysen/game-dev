@@ -15,6 +15,15 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 #canvas-wrap,#gc{touch-action:none;}
 #hud{width:100%;display:flex;justify-content:space-between;align-items:center;padding:12px 16px 6px;z-index:10;flex-shrink:0;}
 #hud .score{font-size:22px;font-weight:700;color:#f0c040;}
+#hud .combo-badge{font-size:14px;font-weight:800;color:#ffd060;line-height:1;}
+#hud .xform-badge{font-size:11px;font-weight:700;color:#8fe0ff;line-height:1;letter-spacing:0.3px;}
+#howto-art{display:flex;justify-content:center;margin:4px 0;}
+#howto-art svg{width:190px;height:auto;border-radius:8px;background:#0f1626;}
+#howto-text{font-size:13px;color:#cfd6e6;line-height:1.5;max-width:280px;text-align:center;min-height:70px;margin:4px 0;}
+.howto-nav{display:flex;gap:14px;align-items:center;justify-content:center;margin-bottom:4px;}
+.howto-nav button{background:rgba(240,192,64,0.14);color:#f0c040;border:none;border-radius:50%;width:36px;height:36px;font-size:20px;line-height:1;cursor:pointer;}
+.howto-nav button:disabled{opacity:0.25;cursor:default;}
+#howto-pager{font-size:12px;color:#888;min-width:42px;text-align:center;}
 #hud .mode-badge{font-size:11px;background:#333;border-radius:12px;padding:4px 10px;color:#aaa;}
 #hud-buttons{display:flex;gap:8px;}
 #canvas-wrap{position:relative;flex:1;width:100%;overflow:hidden;}
@@ -64,7 +73,11 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 <body>
 <div id="screen">
   <div id="hud" style="display:none">
-    <div class="score" id="score-display">0</div>
+    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
+      <div class="score" id="score-display">0</div>
+      <div class="combo-badge" id="combo-display" style="display:none">×1</div>
+      <div class="xform-badge" id="xform-badge" style="display:none"></div>
+    </div>
     <div class="mode-badge" id="mode-badge">TRAP MODE</div>
     <div id="hud-buttons">
       <button class="btn-sm" onclick="pauseGame()">&#10074;&#10074;</button>
@@ -146,8 +159,23 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <div class="overlay" id="pause-screen" style="display:none">
       <h2>PAUSED</h2>
       <button class="btn" onclick="resumeGame()">▶ Resume</button>
+      <button class="btn-outline" onclick="openHowto(false)">📖 How to Play</button>
       <button class="btn-outline" onclick="restartGame()">↺ Restart</button>
       <button class="btn-outline" onclick="backToMenu()">⌂ Main Menu</button>
+    </div>
+
+    <!-- INSTRUCTIONS -->
+    <div class="overlay" id="howto-screen" style="display:none">
+      <h2 id="howto-title" style="margin-bottom:2px;">How to Play</h2>
+      <div id="howto-art"></div>
+      <p id="howto-text"></p>
+      <div class="howto-nav">
+        <button id="howto-prev" onclick="howtoFlip(-1)">‹</button>
+        <span id="howto-pager"></span>
+        <button id="howto-next" onclick="howtoFlip(1)">›</button>
+      </div>
+      <p id="howto-firsttime" class="fineprint" style="display:none;max-width:280px;">These instructions can be opened again any time from the pause menu (❚❚).</p>
+      <button class="btn" onclick="closeHowto()">Got it</button>
     </div>
 
     <!-- LEADERBOARD -->
@@ -224,6 +252,12 @@ var mode = 'trap';
 var difficulty = 'medium';
 var gameState = 'menu';
 var score = 0, trapScore = 0;
+var comboMult = 1;   // battle-mode score multiplier; climbs per consecutive capture
+var comboMissStreak = 0;   // consecutive captureless moves, for the grace window
+// Transform state (battle mode). playerPiece is the active movement form.
+var playerPiece='knight', transformEndsAt=0, transformIsMimic=false;
+var captureChain=0, lastCapturedType=null;
+var battleInvulnUntil=0;   // i-frames after a transform absorbs a hit
 var animFrame = null, lastTime = null;
 var pendingScore = 0, lbTab = 'trap-medium';
 var scrollPx = 0, scrollSpeed = 62;
@@ -236,7 +270,17 @@ var lastBattleMoveTime = 0, battleMoveInterval = 1500;
 var deathSnapshot = null;
 
 var TRAP_DIFF   = { easy:[70,180], medium:[110,240], hard:[150,300], grandmaster:[150,300] };
-var BATTLE_DIFF = { easy:2500, medium:1500, hard:800, grandmaster:800 };
+var BATTLE_DIFF = { easy:3500, medium:2200, hard:800, grandmaster:800 };
+// Battle target density per difficulty. chance = a row has a piece; extra =
+// chance of a second piece that row. Hard/Grandmaster match the old behaviour
+// exactly (0.55 chance, never a second), so only easy/medium get denser boards
+// to make combos sustainable when the pace is slow.
+var BATTLE_SPAWN = {
+  easy:        { chance:0.90, extra:0.50 },
+  medium:      { chance:0.72, extra:0.25 },
+  hard:        { chance:0.55, extra:0.0 },
+  grandmaster: { chance:0.55, extra:0.0 }
+};
 
 var PIECE_TYPES = ['rook','bishop','knight','queen'];
 var PIECES = {
@@ -247,6 +291,17 @@ var PIECES = {
   trap:   {sym:'✕', color:'#cc3333'}
 };
 var PIECE_POINTS = {rook:1, bishop:3, knight:5, queen:10};
+// Multiplier gained per capture — inverse to point value, so cheap pieces build
+// the combo fast and the queen is the cash-in. Applied AFTER the piece scores.
+var COMBO_INC   = {rook:4, bishop:3, knight:2, queen:1};
+// How many captureless moves you may take before the multiplier breaks. Easier
+// modes are forgiving (slow pace, sparse-ish targets); Hard/GM break instantly.
+var COMBO_GRACE = {easy:3, medium:2, hard:1, grandmaster:1};
+// Transform mechanic: 3 captures in a row → become that 3rd piece for 5s (knight
+// → "nightrider" mimic that re-morphs into each piece it then captures). Landing
+// 5 captures inside the window snaps the clock back to 5s. Movement set is built
+// in getValidMoves from playerPiece.
+var TRANSFORM_MS=5000, TRANSFORM_TRIGGER=3, RAY_MAX=12;
 var L_DELTAS = [[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[1,-2],[-1,2],[1,2]];
 var KNIGHT_JUMPS = [[1,2],[-1,2],[1,-2],[-1,-2],[2,1],[2,-1],[-2,1],[-2,-1]];
 var QUEEN_ADJ = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
@@ -442,7 +497,8 @@ function startGame(){
   document.getElementById('hud').style.display='flex';
   var labels={easy:'Easy',medium:'Medium',hard:'Hard',grandmaster:'Grandmaster'};
   document.getElementById('mode-badge').textContent=(mode==='trap'?'TRAP':'BATTLE')+' · '+labels[difficulty];
-  score=0; trapScore=0; scrollPx=0;
+  score=0; trapScore=0; scrollPx=0; comboMult=1; comboMissStreak=0;
+  playerPiece='knight'; transformEndsAt=0; transformIsMimic=false; captureChain=0; lastCapturedType=null; battleInvulnUntil=0;
   scrollSpeed=mode==='trap'?TRAP_DIFF[difficulty][0]:70;
   battleMoveInterval=BATTLE_DIFF[difficulty];
   playerCol=2; playerCanvasY=canvas.height-4*cellH;
@@ -467,6 +523,10 @@ function startGame(){
   updateHUD();
   if(animFrame) cancelAnimationFrame(animFrame);
   animFrame=requestAnimationFrame(loop);
+  if(mode==='battle'){
+    var seenHowto=false; try{ seenHowto=!!localStorage.getItem('kg_seen_battle_howto'); }catch(e){}
+    if(!seenHowto) openHowto(true);   // first battle run: show the how-to (pauses play)
+  }
 }
 
 // Of the new row's open columns, which can the knight actually reach from the
@@ -513,10 +573,27 @@ function spawnRowAtCanvasY(cy){
 
     for(var c=0;c<COLS;c++) if(!open[c]) obstacles.push({col:c,canvasY:cy,pieceType:'trap',alive:true});
   } else {
-    if(Math.random()<0.55){
-      var pool=['rook','rook','bishop','bishop','knight','knight','queen'];
-      var t=pool[Math.floor(Math.random()*pool.length)];
-      obstacles.push({col:Math.floor(Math.random()*COLS),canvasY:cy,pieceType:t,alive:true,dir:(Math.random()<0.5?1:-1),planDC:null,planDR:null});
+    var sp=BATTLE_SPAWN[difficulty]||BATTLE_SPAWN.hard;
+    var chance=sp.chance, extra=sp.extra;
+    // While transformed on Hard/GM the board can feel empty between captures, so
+    // bump the density a little to keep targets coming during the 5s window.
+    if(transformEndsAt && Date.now()<transformEndsAt && (difficulty==='hard'||difficulty==='grandmaster')){
+      chance=Math.min(1,chance+0.25); extra=Math.max(extra,0.2);
+    }
+    if(Math.random()<chance){
+      var POOL_Q=['rook','rook','bishop','bishop','knight','knight','queen'];
+      var POOL_NOQ=['rook','rook','bishop','bishop','knight','knight'];
+      var hasQueen=obstacles.some(function(o){return o.alive&&o.pieceType==='queen';});
+      var n=1+((Math.random()<extra)?1:0);   // sometimes a second piece
+      var used={};
+      for(var bp=0;bp<n;bp++){
+        var pool=hasQueen?POOL_NOQ:POOL_Q;        // only ever one queen on the board
+        var t=pool[Math.floor(Math.random()*pool.length)];
+        if(t==='queen') hasQueen=true;
+        var bc,tr=0; do{ bc=Math.floor(Math.random()*COLS); tr++; }while(used[bc]&&tr<8);
+        used[bc]=true;
+        obstacles.push({col:bc,canvasY:cy,pieceType:t,alive:true,dir:(Math.random()<0.5?1:-1),planDC:null,planDR:null});
+      }
     }
   }
   spawnIndex++;
@@ -557,9 +634,22 @@ function update(dt){
 
   if(mode==='battle'){
     var now=Date.now();
+    if(transformEndsAt && now>=transformEndsAt){   // transform expired → back to a plain knight
+      playerPiece='knight'; transformEndsAt=0; transformIsMimic=false;
+    }
     if(now-lastBattleMoveTime>=battleMoveInterval){
       lastBattleMoveTime=now;
-      if(moveEnemyPieces()){ loseLife(); return; }
+      if(moveEnemyPieces()){
+        if(now<battleInvulnUntil){
+          clearEnemiesOnPlayer();                 // shrug it off during i-frames
+        } else if(transformEndsAt){
+          // a transform absorbs the hit: lose the form + multiplier, but survive
+          playerPiece='knight'; transformEndsAt=0; transformIsMimic=false;
+          comboMult=1; comboMissStreak=0; captureChain=0;
+          battleInvulnUntil=now+1200; clearEnemiesOnPlayer();
+          popups.push({col:playerCol,canvasY:playerCanvasY-cellH*0.3,text:'shielded!',alpha:1});
+        } else { loseLife(); return; }
+      }
     }
   }
 
@@ -679,10 +769,20 @@ function planKnightMoves(force){
 }
 
 function checkCollision(){
+  if(mode==='battle'&&Date.now()<battleInvulnUntil) return;   // i-frames after a shielded hit
   for(var i=0;i<obstacles.length;i++){
     var o=obstacles[i];
     if(!o.alive) continue;
     if(o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.5){ loseLife(); return; }
+  }
+}
+
+// Remove any enemy sitting on the knight's square (used when a transform absorbs
+// a hit, so the knight isn't instantly re-captured on the same square).
+function clearEnemiesOnPlayer(){
+  for(var i=0;i<obstacles.length;i++){
+    var o=obstacles[i];
+    if(o.alive&&o.pieceType!=='trap'&&o.col===playerCol&&Math.abs(o.canvasY-playerCanvasY)<cellH*0.6) o.alive=false;
   }
 }
 
@@ -726,21 +826,37 @@ function loseLife(){
 }
 
 function getValidMoves(){
-  var moves=[];
-  for(var i=0;i<L_DELTAS.length;i++){
-    var nc=playerCol+L_DELTAS[i][0];
-    var ny=playerCanvasY+L_DELTAS[i][1]*cellH;
-    if(nc<0||nc>=COLS) continue;
-    if(ny>canvas.height+cellH) continue;
-    var blocked=false;
+  var moves=[], seen={};
+  function tryAdd(nc,ny){
+    if(nc<0||nc>=COLS) return false;
+    if(ny<-cellH||ny>canvas.height+cellH) return false;
     for(var j=0;j<obstacles.length;j++){
       var o=obstacles[j]; if(!o.alive) continue;
       if(o.col===nc&&Math.abs(o.canvasY-ny)<cellH*0.5){
-        if(mode==='battle'&&o.pieceType!=='trap'){}
-        else{ blocked=true; break; }
+        if(mode==='battle'&&o.pieceType!=='trap'){ /* capturable — doesn't block */ }
+        else return false;   // a trap (or any trap-mode obstacle) blocks the cell
       }
     }
-    if(!blocked) moves.push({col:nc,canvasY:ny});
+    var key=nc+'|'+Math.round((ny-playerCanvasY)/cellH);
+    if(seen[key]) return true;
+    seen[key]=true; moves.push({col:nc,canvasY:ny});
+    return true;
+  }
+  var piece=(mode==='battle')?playerPiece:'knight';
+  if(piece==='knight'){
+    for(var i=0;i<L_DELTAS.length;i++) tryAdd(playerCol+L_DELTAS[i][0], playerCanvasY+L_DELTAS[i][1]*cellH);
+  } else if(piece==='nightrider'){
+    for(var n=0;n<L_DELTAS.length;n++){
+      var dc=L_DELTAS[n][0], dr=L_DELTAS[n][1];
+      for(var k=1;k<=RAY_MAX;k++) if(!tryAdd(playerCol+dc*k, playerCanvasY+dr*k*cellH)) break;
+    }
+  } else {
+    var dirs=[];
+    if(piece==='rook'||piece==='queen') dirs.push([1,0],[-1,0],[0,1],[0,-1]);
+    if(piece==='bishop'||piece==='queen') dirs.push([1,1],[1,-1],[-1,1],[-1,-1]);
+    for(var d=0;d<dirs.length;d++){
+      for(var k2=1;k2<=RAY_MAX;k2++) if(!tryAdd(playerCol+dirs[d][0]*k2, playerCanvasY+dirs[d][1]*k2*cellH)) break;
+    }
   }
   return moves;
 }
@@ -760,13 +876,38 @@ function handleTap(e){
   }
   if(!move) return;
   if(mode==='battle'){
+    var captured=false;
     for(var j=0;j<obstacles.length;j++){
       var o=obstacles[j];
       if(o.alive&&o.pieceType!=='trap'&&o.col===move.col&&Math.abs(o.canvasY-move.canvasY)<cellH*0.5){
-        o.alive=false;
-        var pts=PIECE_POINTS[o.pieceType]||1; score+=pts;
-        popups.push({col:move.col,canvasY:move.canvasY-cellH*0.3,text:'+'+pts,alpha:1});
+        o.alive=false; captured=true; lastCapturedType=o.pieceType;
+        var pts=PIECE_POINTS[o.pieceType]||1;
+        var gained=pts*comboMult;            // score at the multiplier you've built
+        score+=gained;
+        popups.push({col:move.col,canvasY:move.canvasY-cellH*0.3,text:'+'+gained,alpha:1});
+        comboMult+=COMBO_INC[o.pieceType]||1; // then bump it for the next capture
       }
+    }
+    if(captured){
+      comboMissStreak=0;
+      var nowT=Date.now();
+      if(transformEndsAt && nowT<transformEndsAt){
+        // already transformed: every capture snaps the 5s clock back to full
+        transformEndsAt=nowT+TRANSFORM_MS;
+        // the mimic re-morphs into whatever it just took (a knight → nightrider)
+        if(transformIsMimic) playerPiece=(lastCapturedType==='knight')?'nightrider':lastCapturedType;
+      } else {
+        // building toward a transform: the 3rd in a row triggers it
+        captureChain++;
+        if(captureChain>=TRANSFORM_TRIGGER){
+          transformEndsAt=nowT+TRANSFORM_MS; captureChain=0;
+          if(lastCapturedType==='knight'){ transformIsMimic=true; playerPiece='nightrider'; }
+          else { transformIsMimic=false; playerPiece=lastCapturedType; }
+        }
+      }
+    } else {
+      comboMissStreak++;
+      if(comboMissStreak > (COMBO_GRACE[difficulty]||0)){ comboMult=1; comboMissStreak=0; captureChain=0; }
     }
   }
   if(mode==='trap'){
@@ -854,12 +995,16 @@ function render(){
   }
 
   var py=playerCanvasY;
+  var iFrame=(mode==='battle'&&Date.now()<battleInvulnUntil&&Math.floor(Date.now()/110)%2===0);
+  if(!iFrame){
   ctx.fillStyle='rgba(240,192,64,0.2)'; ctx.fillRect(playerCol*cellW,py,cellW,cellH);
   ctx.shadowColor='#f0c040'; ctx.shadowBlur=14; ctx.fillStyle='#f0c040';
   ctx.font='bold '+Math.round(cellW*0.62)+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('♞',playerCol*cellW+cellW/2,py+cellH/2+2);
+  var pGlyph=(mode==='battle')?({knight:'♞',rook:'♜',bishop:'♝',queen:'♛',nightrider:'♘'}[playerPiece]||'♞'):'♞';
+  ctx.fillText(pGlyph,playerCol*cellW+cellW/2,py+cellH/2+2);
   ctx.shadowBlur=0;
+  }
 
   for(var pp=0;pp<popups.length;pp++){
     var p=popups[pp];
@@ -1098,7 +1243,27 @@ function closeTrapped(){
 }
 
 // ── HUD & flow ─────────────────────────────────────────────────────────────
-function updateHUD(){ document.getElementById('score-display').textContent=score; }
+function updateHUD(){
+  document.getElementById('score-display').textContent=score;
+  var cd=document.getElementById('combo-display');
+  if(cd){
+    if(mode==='battle'){
+      cd.style.display='block';
+      cd.textContent='×'+comboMult;
+      cd.style.color = comboMult>=20 ? '#ff7a4a' : (comboMult>=8 ? '#ffae3c' : '#ffd060');
+      cd.style.opacity = (comboMissStreak>0 && comboMult>1) ? '0.45' : '1';  // fading = chain at risk
+    } else cd.style.display='none';
+  }
+  var xb=document.getElementById('xform-badge');
+  if(xb){
+    if(mode==='battle' && transformEndsAt && playerPiece!=='knight'){
+      var rem=Math.max(0,(transformEndsAt-Date.now())/1000);
+      var names={rook:'ROOK',bishop:'BISHOP',queen:'QUEEN',nightrider:'NIGHTRIDER'};
+      xb.textContent=(transformIsMimic?'MIMIC · ':'')+(names[playerPiece]||'')+'  '+rem.toFixed(1)+'s';
+      xb.style.display='block';
+    } else xb.style.display='none';
+  }
+}
 
 function pauseGame(){
   if(gameState!=='playing') return;
@@ -1113,6 +1278,99 @@ function resumeGame(){
   animFrame=requestAnimationFrame(loop);
 }
 function restartGame(){ startGame(); }
+
+// ── Instructions (paged) ────────────────────────────────────────────────────
+function hwGrid(cols,rows,c){var s='';for(var j=0;j<rows;j++)for(var i=0;i<cols;i++)s+='<rect x="'+(i*c)+'" y="'+(j*c)+'" width="'+c+'" height="'+c+'" fill="'+(((i+j)%2)?'#15203a':'#1c2a4c')+'"/>';return s;}
+function hwGly(i,j,c,g,col){return '<text x="'+(i*c+c/2)+'" y="'+(j*c+c/2+1)+'" font-size="'+(c*0.66)+'" fill="'+col+'" text-anchor="middle" dominant-baseline="central" font-family="\'Segoe UI Symbol\',\'Noto Sans Symbols 2\',serif">'+g+'</text>';}
+function hwHi(i,j,c){return '<rect x="'+(i*c)+'" y="'+(j*c)+'" width="'+c+'" height="'+c+'" fill="rgba(240,192,64,0.22)"/><circle cx="'+(i*c+c/2)+'" cy="'+(j*c+c/2)+'" r="'+(c*0.11)+'" fill="rgba(240,192,64,0.85)"/>';}
+function hwTxt(x,y,t,col,sz,anchor,w){return '<text x="'+x+'" y="'+y+'" font-size="'+sz+'" fill="'+col+'" text-anchor="'+(anchor||'start')+'" font-family="\'Segoe UI Symbol\',system-ui,sans-serif"'+(w?' font-weight="700"':'')+'>'+t+'</text>';}
+
+function hwArtMove(){
+  var c=32,hi=[[0,1],[4,1],[0,3],[4,3],[1,0],[3,0],[1,4],[3,4]];
+  var s='<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">'+hwGrid(5,5,c);
+  for(var k=0;k<hi.length;k++)s+=hwHi(hi[k][0],hi[k][1],c);
+  return s+hwGly(2,2,c,'♞','#f0c040')+'</svg>';
+}
+function hwArtModes(){
+  var c=28,s='<svg viewBox="0 0 200 150" xmlns="http://www.w3.org/2000/svg">';
+  s+=hwTxt(30,12,'TRAP — slip through the gaps','#d08080',11,'start',1);
+  s+='<g transform="translate(30,16)">'+hwGrid(5,2,c)+hwGly(0,0,c,'✕','#cc4444')+hwGly(1,0,c,'✕','#cc4444')+hwGly(3,0,c,'✕','#cc4444')+hwGly(4,0,c,'✕','#cc4444')+hwGly(2,1,c,'♞','#f0c040')+'</g>';
+  s+=hwTxt(30,88,'BATTLE — capture the pieces','#7fb0e0',11,'start',1);
+  s+='<g transform="translate(30,92)">'+hwGrid(5,2,c)+hwGly(0,0,c,'♛','#e04080')+hwGly(2,0,c,'♜','#4080e0')+hwGly(4,0,c,'♝','#9060e0')+hwGly(2,1,c,'♞','#f0c040')+'</g>';
+  return s+'</svg>';
+}
+function hwArtCombo(){
+  var c=30,s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">';
+  s+='<g transform="translate(12,34)">'+hwGrid(4,2,c)+hwGly(0,1,c,'♞','#f0c040')+hwHi(1,0,c)+hwGly(1,0,c,'♜','#4080e0')+'</g>';
+  s+=hwTxt(165,50,'+4','#3cdc78',19,'middle',1);
+  s+='<rect x="142" y="60" width="56" height="28" rx="8" fill="#23304f"/>'+hwTxt(170,80,'×5','#ffd060',18,'middle',1);
+  return s+hwTxt(110,130,'each capture in a row builds the ×','#8a93ad',11,'middle')+'</svg>';
+}
+function hwArtTransform(){
+  var s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">',i;
+  for(i=0;i<3;i++) s+='<rect x="'+(14+i*34)+'" y="38" width="30" height="30" rx="4" fill="#1c2a4c"/>'+hwTxt(14+i*34+15,60,'♞','#f0c040',20,'middle');
+  s+=hwTxt(63,88,'3 in a row','#8a93ad',11,'middle');
+  s+=hwTxt(130,62,'→','#8a93ad',22,'middle');
+  s+='<rect x="150" y="32" width="44" height="44" rx="6" fill="#1c2a4c"/>'+hwTxt(172,60,'♛','#e04080',28,'middle');
+  s+='<rect x="148" y="82" width="48" height="16" rx="6" fill="#23304f"/>'+hwTxt(172,94,'5.0s','#8fe0ff',11,'middle');
+  return s+hwTxt(172,118,'become that piece','#8a93ad',10,'middle')+'</svg>';
+}
+function hwArtShield(){
+  var s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">';
+  s+='<rect x="28" y="38" width="44" height="44" rx="6" fill="#1c2a4c"/>'+hwTxt(50,68,'♛','#e04080',28,'middle');
+  s+=hwTxt(50,98,'✦ shielded!','#8fe0ff',12,'middle',1);
+  s+='<rect x="108" y="46" width="92" height="12" rx="6" fill="#23304f"/><rect x="108" y="46" width="58" height="12" rx="6" fill="#8fe0ff"/>';
+  s+=hwTxt(154,40,'every capture refills 5s','#8a93ad',10,'middle');
+  s+=hwTxt(154,86,'a hit costs the form,','#cfd6e6',11,'middle')+hwTxt(154,102,'not your run','#cfd6e6',11,'middle');
+  return s+'</svg>';
+}
+
+var HOWTO_PAGES=[
+  {title:'Move like a knight', art:hwArtMove,
+   text:'You move in an L-shape, just like a chess knight. Tap any highlighted square to leap there. (Grandmaster hides the highlights.)'},
+  {title:'Two ways to play', art:hwArtModes,
+   text:'Trap mode: thread through the gaps in the falling trap rows and survive. Battle mode: capture the enemy pieces for points.'},
+  {title:'Build a combo', art:hwArtCombo,
+   text:'In Battle, capturing on back-to-back moves raises your score multiplier — and cheaper pieces add the most. A move that captures nothing resets it (easier modes forgive a miss or two).'},
+  {title:'Transform', art:hwArtTransform,
+   text:'Capture 3 in a row and you become that 3rd piece for 5 seconds, gaining its movement. Make a knight your 3rd and you turn into a nightrider that copies each piece it then captures.'},
+  {title:'Stay aggressive', art:hwArtShield,
+   text:'Every capture refills the 5-second timer, so keep hunting. While transformed, getting caught costs you the form and your multiplier — but not the run.'}
+];
+
+var howtoIdx=0, howtoFirstTime=false;
+function openHowto(firstTime){
+  howtoFirstTime=!!firstTime;
+  if(gameState==='playing'){ gameState='paused'; if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;} }
+  document.getElementById('pause-screen').style.display='none';
+  howtoIdx=0;
+  document.getElementById('howto-firsttime').style.display=howtoFirstTime?'block':'none';
+  renderHowto();
+  showScreen('howto-screen');
+}
+function renderHowto(){
+  var p=HOWTO_PAGES[howtoIdx];
+  document.getElementById('howto-title').textContent=p.title;
+  document.getElementById('howto-art').innerHTML=p.art();
+  document.getElementById('howto-text').textContent=p.text;
+  document.getElementById('howto-pager').textContent=(howtoIdx+1)+' / '+HOWTO_PAGES.length;
+  document.getElementById('howto-prev').disabled=howtoIdx<=0;
+  document.getElementById('howto-next').disabled=howtoIdx>=HOWTO_PAGES.length-1;
+}
+function howtoFlip(d){ howtoIdx=Math.max(0,Math.min(HOWTO_PAGES.length-1,howtoIdx+d)); renderHowto(); }
+function closeHowto(){
+  document.getElementById('howto-screen').style.display='none';
+  if(howtoFirstTime){
+    howtoFirstTime=false;
+    try{ localStorage.setItem('kg_seen_battle_howto','1'); }catch(e){}
+    gameState='playing'; lastTime=null;
+    lastBattleMoveTime=Date.now()-(battleMoveInterval*0.5);
+    if(animFrame) cancelAnimationFrame(animFrame);
+    animFrame=requestAnimationFrame(loop);
+  } else {
+    showScreen('pause-screen');
+  }
+}
 
 // ── Leaderboard (Supabase online + local Personal) ─────────────────────────
 var lbCache={}, lbLoading=false;
@@ -1340,7 +1598,7 @@ function saveCompose(){
 }
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
-  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose','howto-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('hud').style.display='none';
 }
 window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName(); });
