@@ -97,9 +97,8 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
           <button class="btn-sm" onclick="menuEditName()">change</button>
         </div>
         <div id="menu-name-entry" style="display:none;flex-direction:column;align-items:center;gap:8px;">
-          <input type="text" id="menu-name-input" maxlength="7" placeholder="ENTER NAME" autocomplete="off" spellcheck="false">
+          <input type="text" id="menu-name-input" maxlength="7" placeholder="ENTER NAME" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')startGame();">
           <p id="menu-name-error" style="font-size:11px;color:#e05050;display:none;margin:0;">Please enter a valid name.</p>
-          <button class="btn-sm" onclick="saveMenuName()">Save name</button>
         </div>
       </div>
       <button class="btn" onclick="startGame()">PLAY</button>
@@ -258,7 +257,8 @@ var BUG_REPORT_URL = 'https://forms.gle/mquEdF4V6xkXFKSR7';
 // #author in the URL ▸ Patch notes ▸ "+ Add note"), then paste the snippet it
 // generates here and re-deploy. Dates are 'YYYY-MM-DD'.
 var PATCH_NOTES = [
-  
+
+  { version: "0.2.5", date: "2026-06-21", notes: "• Removed save name button so you can hit play as soon as you enter your name\n• Reworded the legend on the \"Was I trapped?\" snapshot to improve clarity" },
   { version: '0.2.4', date: '2026-06-21', notes: 'Okay maybe I was wrong, there were, in fact, impossible arrangements in Trap mode, but that should hopefully be fixed now.\n\n• Modified procedural trap generation logic to hopefully never fully trap the player\n• \"Was I trapped?\" snapshot now shows your last 10 moves.' },
   { version: '0.2.3', date: '2026-06-21', notes: '• Added patch notes\n• Added bug report' },
 ];
@@ -411,9 +411,21 @@ function getLBKey(){ return mode+'-'+difficulty; }
 
 // ── Start ──────────────────────────────────────────────────────────────────
 function startGame(){
-  // require a name (set on the home screen) before playing
-  var nm=getSavedName();
-  if(!nm || !isNameAllowed(nm)){ backToMenu(); menuEditName(true); return; }
+  // Resolve the player's name. If the name-entry field is open, commit whatever
+  // is typed right now (Play doubles as Save); otherwise use the saved name.
+  var entryBox=document.getElementById('menu-name-entry');
+  var inp=document.getElementById('menu-name-input');
+  var err=document.getElementById('menu-name-error');
+  var nm;
+  if(entryBox && entryBox.style.display!=='none'){
+    var raw=(inp?inp.value:'').trim().slice(0,7);
+    if(!raw){ if(err){ err.textContent='Enter a name to play.'; err.style.display='block'; } if(inp){try{inp.focus();}catch(e){}} return; }
+    if(!isNameAllowed(raw)){ if(err){ err.textContent='Please choose a different name.'; err.style.display='block'; } if(inp){try{inp.focus();}catch(e){}} return; }
+    setSavedName(raw); refreshMenuName(); nm=raw;
+  } else {
+    nm=getSavedName();
+    if(!nm || !isNameAllowed(nm)){ backToMenu(); menuEditName(true); return; }
+  }
   resize(); hideAll();
   document.getElementById('hud').style.display='flex';
   var labels={easy:'Easy',medium:'Medium',hard:'Hard'};
@@ -1033,7 +1045,7 @@ function showTrapped(){
   var legend=document.getElementById('trapped-legend');
   if(escaped){
     if(reason==='deepback'){
-      if(verdict){ verdict.textContent='Nope, just'; verdict.style.color='#ffd060'; }
+      if(verdict){ verdict.textContent='Nope'; verdict.style.color='#ffd060'; }
       if(sub) sub.textContent='Technically escapable \u2014 but the only line out doubled back through tiles already off the bottom of the screen.';
     } else {
       if(verdict){ verdict.textContent='Nope'; verdict.style.color='#3cdc78'; }
@@ -1041,11 +1053,16 @@ function showTrapped(){
         ? 'You had a way out \u2014 double back, then push forward.'
         : 'You had a clean line forward.';
     }
-    if(legend) legend.textContent='Green = the escape route in order. Cyan = your last 10 moves. Scroll to see the whole board.';
+    if(legend) legend.innerHTML=
+      '<b style="color:#3cdc78">Green squares</b> &mdash; a safe path you could have taken, numbered in order you\u2019d play them<br>'+
+      '<b style="color:#6fd3ff">Blue circles</b> &mdash; the last 10 squares you landed on<br>'+
+      'Scroll up and down to see the whole board.';
   } else {
     if(verdict){ verdict.textContent='Yep'; verdict.style.color='#ff8a5c'; }
     if(sub) sub.textContent='Genuinely trapped \u2014 boxed in, with no legal jump out of that square.';
-    if(legend) legend.textContent='Cyan = your last 10 moves. Red = traps. No forward line existed from here.';
+    if(legend) legend.innerHTML=
+      '<b style="color:#6fd3ff">Blue numbers</b> &mdash; the last 10 squares you landed on<br>'+
+      'There was no safe square within a knight\u2019s move of where you ended up.';
   }
   showScreen('trapped-screen');
   var info=renderSnapshot();
