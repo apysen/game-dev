@@ -7,7 +7,7 @@ window.KG_CONFIG = {
   BETA_SIGNUP_URL: "https://script.google.com/macros/s/AKfycbzdslHsafJWbA8ja6z75usIKraPFq7EJO3Z_OMAsat-6cJnAatsY7VCW1bjUa9PBp03/exec",
 
   PATCH_NOTES: [
-    { version: "0.3.2", date: "2026-06-22", notes: "This may or may not be the final update before I start moving over to TestFlight.\n\n• Equipped skin is now shown on the leaderboard\n• Instructions are now shown the first time you play each game mode\n• Added a beta sign-up button" },
+    { version: "0.3.2", date: "2026-06-22", notes: "This may or may not be the final update before I start moving over to TestFlight.\n\n• Equipped skin is now shown on the leaderboard\n• Instructions are now shown the first time you play each game mode\n• Added a beta sign-up button\n• Added crowns for 1st, 2nd, and 3rd place\n• No more name changes for you, Gurt" },
     { version: "0.3.1", date: "2026-06-22", notes: "• Cleaned up the main menu UI\n• Added a settings button for those who are curious about things\n• Messed around with battle mode numbers to see what feels fun\n• Added a 5-second timer bar to visualize transformation duration\n• Added a popup to show how much each piece is increasing your combo (I personally don't like how this looks, so it will be fixed in a future patch. Open to suggestions.)\n• Added Achievements\n• Added skins" },
     { version: "0.3.0", date: "2026-06-22", notes: "Battle mode has been completely reworked.\n\n• Consecutive captures allow you to accumulate a score multiplier\n• Transform into enemy pieces to give yourself an edge in battle" },
     { version: "0.2.6", date: "2026-06-21", notes: "• Added Grandmaster difficulty. Apologies in advance." },
