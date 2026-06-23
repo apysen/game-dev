@@ -149,13 +149,13 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <!-- BETA SIGN-UP -->
     <div class="overlay" id="beta-screen" style="display:none">
       <h2>✉ Beta sign-up</h2>
-      <p class="fineprint" style="max-width:280px;">Drop your email to eventually be invited to the mobile app beta.</p>
+      <p class="fineprint" style="max-width:280px;">Drop your email to hear when the mobile beta goes live. That's the only thing it's used for.</p>
       <input type="email" id="beta-input" placeholder="you@example.com" autocomplete="email" spellcheck="false"
              style="width:240px;max-width:80%;text-align:center;" onkeydown="if(event.key==='Enter')submitBeta();">
       <p id="beta-msg" style="font-size:12px;margin:0;min-height:16px;"></p>
       <div style="display:flex;gap:10px;">
-        <button class="btn" id="beta-submit" onclick="submitBeta()">Sign up</button>
-        <button class="btn-outline" onclick="openSettings()">⌂ Back</button>
+        <button class="btn" id="beta-submit" onclick="submitBeta()">Sign me up</button>
+        <button class="btn-outline" onclick="closeBeta()">⌂ Back</button>
       </div>
     </div>
 
@@ -1474,6 +1474,7 @@ function closeHowto(){
   } else if(howtoContext==='intro'){
     try{ localStorage.setItem('kg_seen_intro','1'); }catch(e){}
     showScreen('menu-screen');
+    maybePromptBeta();
   } else if(howtoContext==='settings'){
     openSettings();
   } else {
@@ -1768,20 +1769,32 @@ function updateBetaDots(){
   var bd=document.getElementById('beta-dot'); if(bd) bd.style.display=on;
 }
 
-function openBeta(){
+var betaReturn='settings';
+function openBeta(ret){
+  betaReturn = (ret==='menu') ? 'menu' : 'settings';
   hideAll();
   try{ localStorage.setItem('kg_seen_beta','1'); }catch(e){}
   updateBetaDots();
   var inp=document.getElementById('beta-input'), msg=document.getElementById('beta-msg'), btn=document.getElementById('beta-submit');
   var saved=''; try{ saved=localStorage.getItem('kg_beta_email')||''; }catch(e){}
   if(inp) inp.value=saved;
-  if(btn){ btn.disabled=false; btn.textContent='Sign up'; }
+  if(btn){ btn.disabled=false; btn.textContent='Sign me up'; }
   if(msg){
     if(saved){ msg.style.color='#3cdc78'; msg.textContent="You're on the list — update it any time."; }
     else { msg.textContent=''; }
   }
   showScreen('beta-screen');
   try{ inp.focus(); }catch(e){}
+}
+function closeBeta(){
+  if(betaReturn==='menu'){ hideAll(); showScreen('menu-screen'); refreshMenuName(); }
+  else openSettings();
+}
+// Auto-prompt for beta sign-up at launch, unless they've already signed up.
+function maybePromptBeta(){
+  var signed=false; try{ signed=!!localStorage.getItem('kg_beta_email'); }catch(e){}
+  if(signed) return;
+  openBeta('menu');
 }
 function submitBeta(){
   var inp=document.getElementById('beta-input'), msg=document.getElementById('beta-msg'), btn=document.getElementById('beta-submit');
@@ -1894,6 +1907,7 @@ window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuNa
   loadAch(); activeSkinColor=skinColorById(getActiveSkin()); syncEquippedSkin(); updateBetaDots();
   var seenIntro=false; try{ seenIntro=!!localStorage.getItem('kg_seen_intro'); }catch(e){}
   if(!seenIntro) openHowto({pages:[0,1],context:'intro',firstTime:true});   // basics on first launch
+  else maybePromptBeta();                                                    // otherwise nudge beta sign-up
 });
 </script>
 </body>
