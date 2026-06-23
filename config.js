@@ -6,6 +6,7 @@ window.KG_CONFIG = {
   REPORT_EMAIL:   "apys502@gmail.com",
 
   PATCH_NOTES: [
+    { version: "0.3.1", date: "2026-06-22", notes: "• Cleaned up the main menu UI\n• Added a settings button for those who are curious about things\n• Messed around with battle mode numbers to see what feels fun\n• Added a 5-second timer bar to visualize transformation duration\n• Added a popup to show how much each piece is increasing your combo (I personally don't like how this looks, so it will be fixed in a future patch. Open to suggestions.)" },
     { version: "0.3.0", date: "2026-06-22", notes: "Battle mode has been completely reworked.\n\n• Consecutive captures allow you to accumulate a score multiplier\n• Transform into enemy pieces to give yourself an edge in battle" },
     { version: "0.2.6", date: "2026-06-21", notes: "• Added Grandmaster difficulty. Apologies in advance." },
     { version: "0.2.5", date: "2026-06-21", notes: "• Removed save name button so you can hit play as soon as you enter your name\n• Reworded the legend on the \"Was I trapped?\" snapshot to improve clarity" },
