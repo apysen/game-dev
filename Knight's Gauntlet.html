@@ -46,14 +46,16 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 #lb-list{width:280px;padding:0;max-height:48vh;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;}
 #lb-list li{display:flex;justify-content:space-between;padding:9px 4px;border-bottom:1px solid #333;font-size:16px;color:#ccc;list-style:none;}
 #lb-list li:first-child{color:#f0c040;font-weight:700;}
+.lb-skin{font-size:15px;margin-left:6px;vertical-align:middle;}
 .lb-tab{background:transparent;color:#aaa;border:1px solid #444;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;}
 .lb-tab.active{border-color:#f0c040;color:#f0c040;}
 .lb-source-row{display:flex;gap:10px;margin-bottom:10px;}
 .lb-source-tab{background:#16213e;color:#aaa;border:2px solid #333;border-radius:10px;padding:8px 22px;font-size:15px;font-weight:700;cursor:pointer;}
 .lb-source-tab.active{border-color:#f0c040;color:#f0c040;}
-#name-input,#menu-name-input,#patch-ver-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
+#name-input,#menu-name-input,#patch-ver-input,#beta-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
 .corner-btn{position:absolute;bottom:14px;background:#16213e;color:#9aa3c0;border:1px solid #2a2f4a;border-radius:10px;padding:7px 11px;font-size:11px;font-weight:600;cursor:pointer;z-index:25;}
 .corner-btn:active{background:#1f2747;}
+.notif-dot{position:absolute;top:-4px;right:-4px;width:11px;height:11px;border-radius:50%;background:#ff4d4d;border:2px solid #1a1a2e;box-shadow:0 0 6px rgba(255,77,77,0.85);}
 #settings-btn{left:14px;}
 .patch-arrow{position:absolute;top:50%;transform:translateY(-50%);background:rgba(240,192,64,0.12);color:#f0c040;border:none;border-radius:50%;width:38px;height:38px;font-size:24px;line-height:1;cursor:pointer;z-index:30;}
 .patch-arrow:disabled{opacity:0.18;cursor:default;}
@@ -65,7 +67,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 .pn-body{font-size:14px;color:#ddd;line-height:1.6;white-space:pre-wrap;}
 #patch-notes-input,#compose-snippet{background:#0f1626;border:2px solid #f0c040;border-radius:8px;color:#fff;width:262px;max-width:80%;padding:10px;font-size:14px;font-family:inherit;resize:vertical;}
 #compose-snippet{border-color:#333;font-size:11px;height:84px;}
-#name-input::placeholder,#menu-name-input::placeholder{color:#555;}
+#name-input::placeholder,#menu-name-input::placeholder,#beta-input::placeholder{color:#555;}
 .fineprint{font-size:10px;color:#666;max-width:240px;line-height:1.4;text-align:center;}
 .ach-corner{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.08);border:none;border-radius:50%;width:42px;height:42px;font-size:20px;cursor:pointer;z-index:21;display:none;}
 #ach-list{display:flex;flex-direction:column;gap:8px;width:90%;max-width:340px;max-height:52vh;overflow-y:auto;padding:2px;}
@@ -128,7 +130,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       </div>
       <button class="btn" onclick="startGame()">PLAY</button>
       <button class="btn-outline" onclick="showLeaderboard()">🏆 Leaderboard</button>
-      <button class="corner-btn" id="settings-btn" onclick="openSettings()">⚙ Settings</button>
+      <button class="corner-btn" id="settings-btn" onclick="openSettings()">⚙ Settings<span class="notif-dot" id="settings-dot" style="display:none"></span></button>
     </div>
 
     <!-- SETTINGS -->
@@ -140,7 +142,21 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <button class="btn-outline" onclick="openAch()">🏆 Achievements</button>
       <button class="btn-outline" onclick="openPatchNotes()">📋 Patch notes</button>
       <button class="btn-outline" onclick="openBugReport()">🐞 Report a bug</button>
+      <button class="btn-outline" style="position:relative" onclick="openBeta()">✉ Beta sign-up<span class="notif-dot" id="beta-dot" style="display:none"></span></button>
       <button class="btn" onclick="backToMenu()">⌂ Back</button>
+    </div>
+
+    <!-- BETA SIGN-UP -->
+    <div class="overlay" id="beta-screen" style="display:none">
+      <h2>✉ Beta sign-up</h2>
+      <p class="fineprint" style="max-width:280px;">Drop your email to eventually be invited to the mobile app beta.</p>
+      <input type="email" id="beta-input" placeholder="you@example.com" autocomplete="email" spellcheck="false"
+             style="width:240px;max-width:80%;text-align:center;" onkeydown="if(event.key==='Enter')submitBeta();">
+      <p id="beta-msg" style="font-size:12px;margin:0;min-height:16px;"></p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn" id="beta-submit" onclick="submitBeta()">Sign up</button>
+        <button class="btn-outline" onclick="openSettings()">⌂ Back</button>
+      </div>
     </div>
 
     <!-- ACHIEVEMENTS -->
@@ -356,6 +372,9 @@ var REPORT_EMAIL = KGC.REPORT_EMAIL || 'youremail@example.com';
 // Google Form share link for the bug-report button.
 var BUG_REPORT_URL = KGC.BUG_REPORT_URL || 'https://forms.gle/YOUR-FORM-ID';
 
+// Google Apps Script web-app URL that appends beta sign-up emails to a Sheet.
+var BETA_SIGNUP_URL = KGC.BETA_SIGNUP_URL || 'https://script.google.com/macros/s/YOUR-SCRIPT-ID/exec';
+
 // Patch notes shown to everyone. Edit these in config.js (newest first; the
 // viewer also sorts by date). To author in-app, visit the page with #author in
 // the URL ▸ Patch notes ▸ "+ Add note", then paste the snippet into config.js.
@@ -564,6 +583,9 @@ function startGame(){
   if(mode==='battle'){
     var seenHowto=false; try{ seenHowto=!!localStorage.getItem('kg_seen_battle_howto'); }catch(e){}
     if(!seenHowto) openHowto({pages:[3,4,5],context:'battle',firstTime:true});   // combo / transform / shield
+  } else if(mode==='trap'){
+    var seenTrap=false; try{ seenTrap=!!localStorage.getItem('kg_seen_trap_howto'); }catch(e){}
+    if(!seenTrap) openHowto({pages:[2],context:'trap',firstTime:true});           // trap tactics
   }
 }
 
@@ -1444,6 +1466,11 @@ function closeHowto(){
     lastBattleMoveTime=Date.now()-(battleMoveInterval*0.5);
     if(animFrame) cancelAnimationFrame(animFrame);
     animFrame=requestAnimationFrame(loop);
+  } else if(howtoContext==='trap'){
+    try{ localStorage.setItem('kg_seen_trap_howto','1'); }catch(e){}
+    gameState='playing'; lastTime=null;
+    if(animFrame) cancelAnimationFrame(animFrame);
+    animFrame=requestAnimationFrame(loop);
   } else if(howtoContext==='intro'){
     try{ localStorage.setItem('kg_seen_intro','1'); }catch(e){}
     showScreen('menu-screen');
@@ -1483,7 +1510,7 @@ function unlockAch(id){
   for(var i=0;i<ACHIEVEMENTS.length;i++) if(ACHIEVEMENTS[i].id===id){ showAchToast(ACHIEVEMENTS[i]); break; }
 }
 function getActiveSkin(){ try{ return localStorage.getItem('kg_skin')||'gold'; }catch(e){ return 'gold'; } }
-function setActiveSkin(id){ try{ localStorage.setItem('kg_skin',id); }catch(e){} activeSkinColor=skinColorById(id); }
+function setActiveSkin(id){ try{ localStorage.setItem('kg_skin',id); }catch(e){} activeSkinColor=skinColorById(id); syncEquippedSkin(); }
 function skinColorById(id){
   if(id==='gold') return DEFAULT_SKIN.color;
   for(var i=0;i<ACHIEVEMENTS.length;i++) if(ACHIEVEMENTS[i].skin.id===id) return ACHIEVEMENTS[i].skin.color;
@@ -1547,18 +1574,30 @@ function saveScore(key,name,s){
   arr.sort(function(a,b){return b.score-a.score;});
   localStorage.setItem('kg_'+key,JSON.stringify(arr.slice(0,10)));
   if(/-(hard|grandmaster)$/.test(key)){
-    fetch(SUPABASE_URL+'/rest/v1/scores',{
-      method:'POST', headers:sbHeaders(),
-      body:JSON.stringify({name:name,score:s,category:key})
-    }).then(function(){ if(lbSource==='online'&&lbTab===key) fetchOnlineScores(key); }).catch(function(){});
+    var hdr=sbHeaders(), endpoint=SUPABASE_URL+'/rest/v1/scores';
+    var done=function(){ if(lbSource==='online'&&lbTab===key) fetchOnlineScores(key); };
+    fetch(endpoint,{method:'POST', headers:hdr,
+      body:JSON.stringify({name:name,score:s,category:key,skin:getActiveSkin()})
+    }).then(function(r){
+      if(r.ok){ done(); return; }
+      // skin column may not exist yet → retry without it so the score still saves
+      fetch(endpoint,{method:'POST', headers:hdr,
+        body:JSON.stringify({name:name,score:s,category:key})
+      }).then(done).catch(function(){});
+    }).catch(function(){});
   }
 }
 
 function fetchOnlineScores(key){
   lbLoading=true; renderLB();
-  var url=SUPABASE_URL+'/rest/v1/scores?category=eq.'+encodeURIComponent(key)+'&select=name,score&order=score.desc&limit=1000';
-  fetch(url,{headers:sbHeaders()})
-    .then(function(r){return r.json();})
+  var base=SUPABASE_URL+'/rest/v1/scores?category=eq.'+encodeURIComponent(key);
+  var tail='&order=score.desc&limit=1000';
+  fetch(base+'&select=name,score,skin'+tail,{headers:sbHeaders()})
+    .then(function(r){ return r.ok?r.json():null; })
+    .then(function(data){
+      if(Array.isArray(data)) return data;
+      return fetch(base+'&select=name,score'+tail,{headers:sbHeaders()}).then(function(r){return r.json();}); // skin column missing
+    })
     .then(function(data){
       if(Array.isArray(data)){
         var seen={}, top=[];
@@ -1572,6 +1611,22 @@ function fetchOnlineScores(key){
       lbLoading=false; renderLB();
     })
     .catch(function(){ lbLoading=false; renderLB(); });
+}
+
+// Push the player's CURRENTLY-equipped skin onto all of their leaderboard rows,
+// so the board reflects their current skin, not whatever they wore at submit time.
+// Fires on equip and on launch. Degrades silently if the table has no skin
+// column or no anon UPDATE policy (rows then keep their submit-time skin).
+function syncEquippedSkin(){
+  var name=getSavedName();
+  if(!name || !isNameAllowed(name)) return;
+  try{
+    fetch(SUPABASE_URL+'/rest/v1/scores?name=eq.'+encodeURIComponent(name),{
+      method:'PATCH', headers:sbHeaders(), body:JSON.stringify({skin:getActiveSkin()})
+    }).then(function(r){
+      if(r && r.ok && lbSource==='online' && /-(hard|grandmaster)$/.test(lbTab)) fetchOnlineScores(lbTab);
+    }).catch(function(){});
+  }catch(e){}
 }
 
 // ── Home-screen name ────────────────────────────────────────────────────────
@@ -1665,7 +1720,9 @@ function renderLB(){
     if(!os.length){ ul.innerHTML='<li style="color:#555;list-style:none;justify-content:center">No scores yet</li>'; return; }
     for(var i=0;i<os.length;i++){
       var li=document.createElement('li');
-      li.innerHTML='<span>'+(i+1)+'. '+os[i].name+'</span><span>'+os[i].score+'</span>';
+      var sc=skinColorById(os[i].skin||'gold');
+      li.innerHTML='<span>'+(i+1)+'. '+os[i].name+'</span><span>'+os[i].score+
+        ' <span class="lb-skin" style="color:'+sc+'" title="'+(os[i].skin||'gold')+' skin">♞</span></span>';
       ul.appendChild(li);
     }
   } else {
@@ -1683,6 +1740,8 @@ function backToMenu(){hideAll();showScreen('menu-screen');refreshMenuName();}
 
 function openSettings(){
   hideAll();
+  try{ localStorage.setItem('kg_seen_settings','1'); }catch(e){}
+  updateBetaDots();
   var name=getSavedName(), line=document.getElementById('settings-name-line');
   if(line){
     if(name && isNameAllowed(name)){ line.innerHTML='Playing as <b style="color:#f0c040;">'+name+'</b>'; line.style.display='block'; }
@@ -1691,6 +1750,58 @@ function openSettings(){
   showScreen('settings-screen');
 }
 function settingsChangeName(){ hideAll(); showScreen('menu-screen'); menuEditName(false); }
+
+// Both notification dots stay until BOTH Settings and Beta sign-up have been tapped.
+function betaNudgeActive(){
+  var s=false,b=false;
+  try{ s=!!localStorage.getItem('kg_seen_settings'); b=!!localStorage.getItem('kg_seen_beta'); }catch(e){}
+  return !(s&&b);
+}
+function updateBetaDots(){
+  var on=betaNudgeActive()?'block':'none';
+  var sd=document.getElementById('settings-dot'); if(sd) sd.style.display=on;
+  var bd=document.getElementById('beta-dot'); if(bd) bd.style.display=on;
+}
+
+function openBeta(){
+  hideAll();
+  try{ localStorage.setItem('kg_seen_beta','1'); }catch(e){}
+  updateBetaDots();
+  var inp=document.getElementById('beta-input'), msg=document.getElementById('beta-msg'), btn=document.getElementById('beta-submit');
+  var saved=''; try{ saved=localStorage.getItem('kg_beta_email')||''; }catch(e){}
+  if(inp) inp.value=saved;
+  if(btn){ btn.disabled=false; btn.textContent='Sign up'; }
+  if(msg){
+    if(saved){ msg.style.color='#3cdc78'; msg.textContent="You're on the list — update it any time."; }
+    else { msg.textContent=''; }
+  }
+  showScreen('beta-screen');
+  try{ inp.focus(); }catch(e){}
+}
+function submitBeta(){
+  var inp=document.getElementById('beta-input'), msg=document.getElementById('beta-msg'), btn=document.getElementById('beta-submit');
+  var email=(inp?inp.value:'').trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    if(msg){ msg.style.color='#e05050'; msg.textContent='Please enter a valid email.'; }
+    return;
+  }
+  if(/YOUR-SCRIPT-ID/.test(BETA_SIGNUP_URL)){
+    if(msg){ msg.style.color='#e05050'; msg.textContent='Sign-up isn\u2019t configured yet.'; }
+    return;
+  }
+  if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
+  // Apps Script web apps don't return CORS headers, so this is fire-and-forget.
+  try{
+    fetch(BETA_SIGNUP_URL,{
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'email='+encodeURIComponent(email)
+    }).catch(function(){});
+  }catch(e){}
+  try{ localStorage.setItem('kg_beta_email',email); }catch(e){}
+  if(msg){ msg.style.color='#3cdc78'; msg.textContent='Thanks! You\u2019re on the list.'; }
+  if(btn){ btn.textContent='Signed up ✓'; }
+}
 
 // ── Bug report + Patch notes ────────────────────────────────────────────────
 function openBugReport(){
@@ -1771,11 +1882,11 @@ function saveCompose(){
 }
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
-  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose','howto-screen','ach-screen','settings-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose','howto-screen','ach-screen','settings-screen','beta-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('hud').style.display='none';
 }
 window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName();
-  loadAch(); activeSkinColor=skinColorById(getActiveSkin());
+  loadAch(); activeSkinColor=skinColorById(getActiveSkin()); syncEquippedSkin(); updateBetaDots();
   var seenIntro=false; try{ seenIntro=!!localStorage.getItem('kg_seen_intro'); }catch(e){}
   if(!seenIntro) openHowto({pages:[0,1],context:'intro',firstTime:true});   // basics on first launch
 });
