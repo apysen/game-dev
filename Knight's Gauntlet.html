@@ -54,8 +54,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 #name-input,#menu-name-input,#patch-ver-input{background:#16213e;border:2px solid #f0c040;border-radius:8px;padding:8px 14px;font-size:18px;color:#fff;text-align:center;width:200px;}
 .corner-btn{position:absolute;bottom:14px;background:#16213e;color:#9aa3c0;border:1px solid #2a2f4a;border-radius:10px;padding:7px 11px;font-size:11px;font-weight:600;cursor:pointer;z-index:25;}
 .corner-btn:active{background:#1f2747;}
-#bug-btn{left:14px;}
-#patch-btn{right:14px;}
+#settings-btn{left:14px;}
 .patch-arrow{position:absolute;top:50%;transform:translateY(-50%);background:rgba(240,192,64,0.12);color:#f0c040;border:none;border-radius:50%;width:38px;height:38px;font-size:24px;line-height:1;cursor:pointer;z-index:30;}
 .patch-arrow:disabled{opacity:0.18;cursor:default;}
 #patch-prev{left:6px;}
@@ -68,6 +67,18 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
 #compose-snippet{border-color:#333;font-size:11px;height:84px;}
 #name-input::placeholder,#menu-name-input::placeholder{color:#555;}
 .fineprint{font-size:10px;color:#666;max-width:240px;line-height:1.4;text-align:center;}
+.ach-corner{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.08);border:none;border-radius:50%;width:42px;height:42px;font-size:20px;cursor:pointer;z-index:21;display:none;}
+#ach-list{display:flex;flex-direction:column;gap:8px;width:90%;max-width:340px;max-height:52vh;overflow-y:auto;padding:2px;}
+.ach-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.05);border-radius:10px;padding:8px 10px;text-align:left;}
+.ach-row.ach-dim{opacity:0.55;}
+.ach-glyph{font-size:22px;width:26px;text-align:center;flex:none;}
+.ach-meta{flex:1;min-width:0;}
+.ach-title{font-size:13px;font-weight:700;color:#e8ecf5;}
+.ach-desc{font-size:11px;color:#9098ad;line-height:1.3;}
+.ach-use{background:#f0c040;color:#1a1a2e;border:none;border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;flex:none;}
+.ach-eq{font-size:11px;color:#3cdc78;font-weight:700;flex:none;}
+.ach-lock{font-size:11px;color:#888;flex:none;}
+#ach-toast{position:absolute;top:64px;left:50%;transform:translateX(-50%);background:rgba(18,22,40,0.96);border:1px solid rgba(240,192,64,0.5);border-radius:12px;padding:10px 16px;font-size:13px;color:#e8ecf5;text-align:center;line-height:1.45;z-index:60;display:none;opacity:0;transition:opacity 0.4s;box-shadow:0 6px 24px rgba(0,0,0,0.5);pointer-events:none;}
 </style>
 </head>
 <body>
@@ -86,6 +97,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
   </div>
   <div id="canvas-wrap">
     <canvas id="gc"></canvas>
+    <div id="ach-toast"></div>
 
     <!-- MENU -->
     <div class="overlay" id="menu-screen">
@@ -108,7 +120,6 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <div id="menu-name" style="display:flex;flex-direction:column;align-items:center;gap:8px;min-height:44px;justify-content:center;">
         <div id="menu-name-set" style="display:none;align-items:center;gap:8px;">
           <span style="font-size:13px;color:#aaa;">Playing as <b id="menu-name-display" style="color:#f0c040;"></b></span>
-          <button class="btn-sm" onclick="menuEditName()">change</button>
         </div>
         <div id="menu-name-entry" style="display:none;flex-direction:column;align-items:center;gap:8px;">
           <input type="text" id="menu-name-input" maxlength="7" placeholder="ENTER NAME" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')startGame();">
@@ -117,8 +128,27 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       </div>
       <button class="btn" onclick="startGame()">PLAY</button>
       <button class="btn-outline" onclick="showLeaderboard()">🏆 Leaderboard</button>
-      <button class="corner-btn" id="bug-btn" onclick="openBugReport()">🐞 Bug report</button>
-      <button class="corner-btn" id="patch-btn" onclick="openPatchNotes()">📋 Patch notes</button>
+      <button class="corner-btn" id="settings-btn" onclick="openSettings()">⚙ Settings</button>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="overlay" id="settings-screen" style="display:none">
+      <h2>⚙ Settings</h2>
+      <p class="fineprint" id="settings-name-line" style="display:none;"></p>
+      <button class="btn-outline" onclick="settingsChangeName()">✎ Change name</button>
+      <button class="btn-outline" onclick="openHowto({pages:[0,1,2,3,4,5],context:'settings'})">📖 How to play</button>
+      <button class="btn-outline" onclick="openAch()">🏆 Achievements</button>
+      <button class="btn-outline" onclick="openPatchNotes()">📋 Patch notes</button>
+      <button class="btn-outline" onclick="openBugReport()">🐞 Report a bug</button>
+      <button class="btn" onclick="backToMenu()">⌂ Back</button>
+    </div>
+
+    <!-- ACHIEVEMENTS -->
+    <div class="overlay" id="ach-screen" style="display:none">
+      <h2>🏆 Achievements</h2>
+      <p class="fineprint" style="max-width:300px;">Complete a challenge within a single <b>Hard</b> or <b>Grandmaster</b> game to earn its skin.</p>
+      <div id="ach-list"></div>
+      <button class="btn" onclick="openSettings()">⌂ Back</button>
     </div>
 
     <!-- PATCH NOTES (viewer) -->
@@ -133,7 +163,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
       <button class="patch-arrow" id="patch-next" onclick="patchFlip(1)">›</button>
       <p id="patch-pager" style="font-size:11px;color:#666;margin:0;"></p>
       <div style="display:flex;gap:10px;">
-        <button class="btn-outline" style="font-size:12px" onclick="backToMenu()">← Back</button>
+        <button class="btn-outline" style="font-size:12px" onclick="openSettings()">← Back</button>
         <button class="btn-outline" id="patch-add-btn" style="font-size:12px;display:none" onclick="openCompose()">+ Add note</button>
       </div>
     </div>
@@ -159,7 +189,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
     <div class="overlay" id="pause-screen" style="display:none">
       <h2>PAUSED</h2>
       <button class="btn" onclick="resumeGame()">▶ Resume</button>
-      <button class="btn-outline" onclick="openHowto(false)">📖 How to Play</button>
+      <button class="btn-outline" onclick="openPauseHowto()">📖 How to Play</button>
       <button class="btn-outline" onclick="restartGame()">↺ Restart</button>
       <button class="btn-outline" onclick="backToMenu()">⌂ Main Menu</button>
     </div>
@@ -174,7 +204,7 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;height:100dv
         <span id="howto-pager"></span>
         <button id="howto-next" onclick="howtoFlip(1)">›</button>
       </div>
-      <p id="howto-firsttime" class="fineprint" style="display:none;max-width:280px;">These instructions can be opened again any time from the pause menu (❚❚).</p>
+      <p id="howto-firsttime" class="fineprint" style="display:none;max-width:280px;">You can reopen these any time from ⚙ Settings, or the pause menu (❚❚) while playing.</p>
       <button class="btn" onclick="closeHowto()">Got it</button>
     </div>
 
@@ -258,6 +288,10 @@ var comboMissStreak = 0;   // consecutive captureless moves, for the grace windo
 var playerPiece='knight', transformEndsAt=0, transformIsMimic=false;
 var captureChain=0, lastCapturedType=null;
 var battleInvulnUntil=0;   // i-frames after a transform absorbs a hit
+// achievement progress (single-game; only counts on Hard / Grandmaster)
+var achAdvance=0, achCapStreak=0, achXformStart=0, achPrevPiece='knight';
+var achXformCounts={rook:0,bishop:0,queen:0,nightrider:0};
+var unlockedAch={}, activeSkinColor='#f0c040';
 var animFrame = null, lastTime = null;
 var pendingScore = 0, lbTab = 'trap-medium';
 var scrollPx = 0, scrollSpeed = 62;
@@ -294,6 +328,7 @@ var PIECE_POINTS = {rook:1, bishop:3, knight:5, queen:10};
 // Multiplier gained per capture — inverse to point value, so cheap pieces build
 // the combo fast and the queen is the cash-in. Applied AFTER the piece scores.
 var COMBO_INC   = {rook:4, bishop:3, knight:2, queen:1};
+var COMBO_FORM_BONUS = 3;   // bishop & nightrider cover less ground, so they build the × faster
 // How many captureless moves you may take before the multiplier breaks. Easier
 // modes are forgiving (slow pace, sparse-ish targets); Hard/GM break instantly.
 var COMBO_GRACE = {easy:3, medium:2, hard:1, grandmaster:1};
@@ -499,6 +534,9 @@ function startGame(){
   document.getElementById('mode-badge').textContent=(mode==='trap'?'TRAP':'BATTLE')+' · '+labels[difficulty];
   score=0; trapScore=0; scrollPx=0; comboMult=1; comboMissStreak=0;
   playerPiece='knight'; transformEndsAt=0; transformIsMimic=false; captureChain=0; lastCapturedType=null; battleInvulnUntil=0;
+  achAdvance=0; achCapStreak=0; achXformStart=0; achPrevPiece='knight';
+  achXformCounts={rook:0,bishop:0,queen:0,nightrider:0};
+  activeSkinColor=skinColorById(getActiveSkin());
   scrollSpeed=mode==='trap'?TRAP_DIFF[difficulty][0]:70;
   battleMoveInterval=BATTLE_DIFF[difficulty];
   playerCol=2; playerCanvasY=canvas.height-4*cellH;
@@ -525,7 +563,7 @@ function startGame(){
   animFrame=requestAnimationFrame(loop);
   if(mode==='battle'){
     var seenHowto=false; try{ seenHowto=!!localStorage.getItem('kg_seen_battle_howto'); }catch(e){}
-    if(!seenHowto) openHowto(true);   // first battle run: show the how-to (pauses play)
+    if(!seenHowto) openHowto({pages:[3,4,5],context:'battle',firstTime:true});   // combo / transform / shield
   }
 }
 
@@ -620,7 +658,7 @@ function update(dt){
   for(var i=0;i<obstacles.length;i++) obstacles[i].canvasY+=delta;
   for(var pi=0;pi<popups.length;pi++) popups[pi].canvasY+=delta;
   for(var p=popups.length-1;p>=0;p--){
-    popups[p].alpha-=dt*1.8;
+    popups[p].alpha-=dt*1.15;
     if(popups[p].alpha<=0) popups.splice(p,1);
   }
   var spawned=false;
@@ -647,10 +685,12 @@ function update(dt){
           playerPiece='knight'; transformEndsAt=0; transformIsMimic=false;
           comboMult=1; comboMissStreak=0; captureChain=0;
           battleInvulnUntil=now+1200; clearEnemiesOnPlayer();
-          popups.push({col:playerCol,canvasY:playerCanvasY-cellH*0.3,text:'shielded!',alpha:1});
+          popups.push({col:playerCol,canvasY:playerCanvasY-cellH*0.3,text:'shielded!',alpha:1.2,color:'#ff9a5c'});
         } else { loseLife(); return; }
       }
     }
+    trackPieceChange(now);
+    if(achActive() && achXformStart && now-achXformStart>=60000) unlockAch('battle_marathon');
   }
 
   if(playerCanvasY>canvas.height+cellH){ loseLife(); return; }
@@ -884,8 +924,11 @@ function handleTap(e){
         var pts=PIECE_POINTS[o.pieceType]||1;
         var gained=pts*comboMult;            // score at the multiplier you've built
         score+=gained;
-        popups.push({col:move.col,canvasY:move.canvasY-cellH*0.3,text:'+'+gained,alpha:1});
-        comboMult+=COMBO_INC[o.pieceType]||1; // then bump it for the next capture
+        popups.push({col:move.col,canvasY:move.canvasY-cellH*0.42,text:'+'+gained,alpha:1.25,color:'#9be8a0'});
+        var inc=COMBO_INC[o.pieceType]||1;
+        if(playerPiece==='bishop'||playerPiece==='nightrider') inc*=COMBO_FORM_BONUS; // reward the weaker forms
+        comboMult+=inc;                      // then bump it for the next capture
+        popups.push({col:move.col,canvasY:move.canvasY+cellH*0.14,text:'×'+comboMult+' (+'+inc+')',alpha:1.25,color:'#ffd060'});
       }
     }
     if(captured){
@@ -909,11 +952,21 @@ function handleTap(e){
       comboMissStreak++;
       if(comboMissStreak > (COMBO_GRACE[difficulty]||0)){ comboMult=1; comboMissStreak=0; captureChain=0; }
     }
+    if(achActive()){
+      if(captured){ achCapStreak++; if(achCapStreak>=5) unlockAch('battle_streak'); }
+      else achCapStreak=0;
+    }
+    trackPieceChange(Date.now());
   }
   if(mode==='trap'){
     var rowDelta=Math.round((playerCanvasY-move.canvasY)/cellH);
     trapScore=Math.max(0,trapScore+rowDelta);
     score=trapScore;
+    if(achActive()){
+      if(rowDelta>0){ achAdvance+=rowDelta; if(achAdvance>=25) unlockAch('trap_advance'); }
+      else if(rowDelta<0) achAdvance=0;   // backtracked → streak resets
+      if(score>=150) unlockAch('trap_score');
+    }
   }
   playerCol=move.col; playerCanvasY=move.canvasY;
   if(mode==='trap'){
@@ -997,18 +1050,26 @@ function render(){
   var py=playerCanvasY;
   var iFrame=(mode==='battle'&&Date.now()<battleInvulnUntil&&Math.floor(Date.now()/110)%2===0);
   if(!iFrame){
-  ctx.fillStyle='rgba(240,192,64,0.2)'; ctx.fillRect(playerCol*cellW,py,cellW,cellH);
-  ctx.shadowColor='#f0c040'; ctx.shadowBlur=14; ctx.fillStyle='#f0c040';
+  ctx.globalAlpha=0.18; ctx.fillStyle=activeSkinColor; ctx.fillRect(playerCol*cellW,py,cellW,cellH); ctx.globalAlpha=1;
+  ctx.shadowColor=activeSkinColor; ctx.shadowBlur=14; ctx.fillStyle=activeSkinColor;
   ctx.font='bold '+Math.round(cellW*0.62)+'px "Times New Roman","Noto Sans Symbols 2","Segoe UI Symbol",serif';
   ctx.textAlign='center'; ctx.textBaseline='middle';
   var pGlyph=(mode==='battle')?({knight:'♞',rook:'♜',bishop:'♝',queen:'♛',nightrider:'♘'}[playerPiece]||'♞'):'♞';
   ctx.fillText(pGlyph,playerCol*cellW+cellW/2,py+cellH/2+2);
   ctx.shadowBlur=0;
   }
+  // slim transform-timer bar just under the piece, so the corner HUD isn't needed
+  if(mode==='battle' && transformEndsAt){
+    var remF=Math.max(0,(transformEndsAt-Date.now())/TRANSFORM_MS);
+    var bw=cellW*0.66, bx=playerCol*cellW+(cellW-bw)/2, by=py+cellH+2, bh=3;
+    ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle=(remF>0.4?'#8fe0ff':(remF>0.2?'#ffd060':'#ff7050'));
+    ctx.fillRect(bx,by,bw*remF,bh);
+  }
 
   for(var pp=0;pp<popups.length;pp++){
     var p=popups[pp];
-    ctx.globalAlpha=Math.max(0,p.alpha); ctx.fillStyle='#f0c040';
+    ctx.globalAlpha=Math.max(0,Math.min(1,p.alpha)); ctx.fillStyle=p.color||'#f0c040';
     ctx.font='bold '+Math.round(cellW*0.35)+'px system-ui';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(p.text,p.col*cellW+cellW/2,p.canvasY);
@@ -1246,14 +1307,7 @@ function closeTrapped(){
 function updateHUD(){
   document.getElementById('score-display').textContent=score;
   var cd=document.getElementById('combo-display');
-  if(cd){
-    if(mode==='battle'){
-      cd.style.display='block';
-      cd.textContent='×'+comboMult;
-      cd.style.color = comboMult>=20 ? '#ff7a4a' : (comboMult>=8 ? '#ffae3c' : '#ffd060');
-      cd.style.opacity = (comboMissStreak>0 && comboMult>1) ? '0.45' : '1';  // fading = chain at risk
-    } else cd.style.display='none';
-  }
+  if(cd) cd.style.display='none';   // multiplier now shows as a popup on each capture
   var xb=document.getElementById('xform-badge');
   if(xb){
     if(mode==='battle' && transformEndsAt && playerPiece!=='knight'){
@@ -1307,13 +1361,21 @@ function hwArtCombo(){
   return s+hwTxt(110,130,'each capture in a row builds the ×','#8a93ad',11,'middle')+'</svg>';
 }
 function hwArtTransform(){
-  var s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">',i;
-  for(i=0;i<3;i++) s+='<rect x="'+(14+i*34)+'" y="38" width="30" height="30" rx="4" fill="#1c2a4c"/>'+hwTxt(14+i*34+15,60,'♞','#f0c040',20,'middle');
-  s+=hwTxt(63,88,'3 in a row','#8a93ad',11,'middle');
-  s+=hwTxt(130,62,'→','#8a93ad',22,'middle');
-  s+='<rect x="150" y="32" width="44" height="44" rx="6" fill="#1c2a4c"/>'+hwTxt(172,60,'♛','#e04080',28,'middle');
-  s+='<rect x="148" y="82" width="48" height="16" rx="6" fill="#23304f"/>'+hwTxt(172,94,'5.0s','#8fe0ff',11,'middle');
-  return s+hwTxt(172,118,'become that piece','#8a93ad',10,'middle')+'</svg>';
+  var s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">';
+  s+='<rect x="6" y="50" width="32" height="32" rx="5" fill="#1c2a4c"/>'+hwTxt(22,72,'♞','#f0c040',22,'middle');
+  s+=hwTxt(48,72,'→','#8a93ad',18,'middle');
+  var trio=[['♜','#4080e0'],['♛','#e04080'],['♝','#9060e0']];   // 3 captured; the 3rd is the one you become
+  for(var i=0;i<3;i++){ var x=60+i*28;
+    if(i===2) s+='<rect x="'+(x-1)+'" y="51" width="28" height="28" rx="5" fill="#1c2a4c" stroke="#f0c040" stroke-width="2"/>';
+    else s+='<rect x="'+x+'" y="52" width="26" height="26" rx="5" fill="#1c2a4c"/>';
+    s+=hwTxt(x+13,71,trio[i][0],trio[i][1],17,'middle');
+  }
+  s+=hwTxt(100,98,'3 captured','#8a93ad',10,'middle');
+  s+=hwTxt(127,134,'↑ the 3rd','#f0c040',10,'middle');
+  s+=hwTxt(152,72,'→','#8a93ad',18,'middle');
+  s+='<rect x="168" y="50" width="40" height="40" rx="6" fill="#1c2a4c"/>'+hwTxt(188,75,'♝','#9060e0',26,'middle');
+  s+='<rect x="166" y="95" width="44" height="15" rx="6" fill="#23304f"/>'+hwTxt(188,106,'5.0s','#8fe0ff',10,'middle');
+  return s+'</svg>';
 }
 function hwArtShield(){
   var s='<svg viewBox="0 0 220 150" xmlns="http://www.w3.org/2000/svg">';
@@ -1324,53 +1386,153 @@ function hwArtShield(){
   s+=hwTxt(154,86,'a hit costs the form,','#cfd6e6',11,'middle')+hwTxt(154,102,'not your run','#cfd6e6',11,'middle');
   return s+'</svg>';
 }
+function hwArtTrap(){
+  var c=28, s='<svg viewBox="0 0 200 152" xmlns="http://www.w3.org/2000/svg">';
+  s+='<g transform="translate(30,16)">'+hwGrid(5,3,c);
+  for(var i=0;i<5;i++) if(i!==1) s+=hwGly(i,1,c,'✕','#cc4444');   // falling trap row, one gap at col 1
+  s+=hwHi(1,1,c);                                                 // the safe square to leap into
+  s+=hwGly(3,2,c,'♞','#f0c040');                                  // knight below, an L-jump away
+  s+='</g>';
+  s+=hwTxt(100,142,'leap through the gaps to push forward','#8a93ad',11,'middle');
+  return s+'</svg>';
+}
 
 var HOWTO_PAGES=[
   {title:'Move like a knight', art:hwArtMove,
    text:'You move in an L-shape, just like a chess knight. Tap any highlighted square to leap there. (Grandmaster hides the highlights.)'},
   {title:'Two ways to play', art:hwArtModes,
    text:'Trap mode: thread through the gaps in the falling trap rows and survive. Battle mode: capture the enemy pieces for points.'},
+  {title:'Trap tactics', art:hwArtTrap,
+   text:'Trap mode is about progress, not combat: thread the knight through the gaps in each falling row to push forward. And when every gap is out of reach, remember — sometimes moving backward is the best way forward.'},
   {title:'Build a combo', art:hwArtCombo,
-   text:'In Battle, capturing on back-to-back moves raises your score multiplier — and cheaper pieces add the most. A move that captures nothing resets it (easier modes forgive a miss or two).'},
+   text:'In Battle, capturing on back-to-back moves builds your multiplier — and cheaper pieces add the most. You always get at least one free miss before it resets, more on easier modes.'},
   {title:'Transform', art:hwArtTransform,
-   text:'Capture 3 in a row and you become that 3rd piece for 5 seconds, gaining its movement. Make a knight your 3rd and you turn into a nightrider that copies each piece it then captures.'},
+   text:'Capture 3 without breaking your combo and you become that 3rd piece for 5 seconds, gaining its movement. Make a knight your 3rd and you turn into a nightrider that copies each piece it then captures.'},
   {title:'Stay aggressive', art:hwArtShield,
    text:'Every capture refills the 5-second timer, so keep hunting. While transformed, getting caught costs you the form and your multiplier — but not the run.'}
 ];
 
-var howtoIdx=0, howtoFirstTime=false;
-function openHowto(firstTime){
-  howtoFirstTime=!!firstTime;
+var howtoSet=[0,1,2,3,4], howtoPos=0, howtoContext='pause';
+function openHowto(opts){
+  if(typeof opts!=='object'||opts===null) opts={};
+  howtoSet=opts.pages||[0,1,2,3,4];
+  howtoContext=opts.context||'pause';
+  howtoPos=0;
   if(gameState==='playing'){ gameState='paused'; if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;} }
   document.getElementById('pause-screen').style.display='none';
-  howtoIdx=0;
-  document.getElementById('howto-firsttime').style.display=howtoFirstTime?'block':'none';
+  document.getElementById('menu-screen').style.display='none';
+  document.getElementById('howto-firsttime').style.display=opts.firstTime?'block':'none';
   renderHowto();
   showScreen('howto-screen');
 }
 function renderHowto(){
-  var p=HOWTO_PAGES[howtoIdx];
+  var p=HOWTO_PAGES[howtoSet[howtoPos]];
   document.getElementById('howto-title').textContent=p.title;
   document.getElementById('howto-art').innerHTML=p.art();
   document.getElementById('howto-text').textContent=p.text;
-  document.getElementById('howto-pager').textContent=(howtoIdx+1)+' / '+HOWTO_PAGES.length;
-  document.getElementById('howto-prev').disabled=howtoIdx<=0;
-  document.getElementById('howto-next').disabled=howtoIdx>=HOWTO_PAGES.length-1;
+  document.getElementById('howto-pager').textContent=(howtoPos+1)+' / '+howtoSet.length;
+  document.getElementById('howto-prev').disabled=howtoPos<=0;
+  document.getElementById('howto-next').disabled=howtoPos>=howtoSet.length-1;
 }
-function howtoFlip(d){ howtoIdx=Math.max(0,Math.min(HOWTO_PAGES.length-1,howtoIdx+d)); renderHowto(); }
+function howtoFlip(d){ howtoPos=Math.max(0,Math.min(howtoSet.length-1,howtoPos+d)); renderHowto(); }
+function openPauseHowto(){ openHowto({pages: mode==='battle'?[3,4,5]:[2], context:'pause'}); }
 function closeHowto(){
   document.getElementById('howto-screen').style.display='none';
-  if(howtoFirstTime){
-    howtoFirstTime=false;
+  if(howtoContext==='battle'){
     try{ localStorage.setItem('kg_seen_battle_howto','1'); }catch(e){}
     gameState='playing'; lastTime=null;
     lastBattleMoveTime=Date.now()-(battleMoveInterval*0.5);
     if(animFrame) cancelAnimationFrame(animFrame);
     animFrame=requestAnimationFrame(loop);
+  } else if(howtoContext==='intro'){
+    try{ localStorage.setItem('kg_seen_intro','1'); }catch(e){}
+    showScreen('menu-screen');
+  } else if(howtoContext==='settings'){
+    openSettings();
   } else {
     showScreen('pause-screen');
   }
 }
+
+// ── Achievements & skins ───────────────────────────────────────────────────
+var DEFAULT_SKIN={id:'gold', name:'Classic Gold', color:'#f0c040'};
+var ACHIEVEMENTS=[
+  {id:'trap_advance',    mode:'trap',   name:'Trailblazer',
+   desc:'Trap: advance 25 squares without ever backtracking.',
+   skin:{id:'emerald', name:'Emerald', color:'#3cdc78'}},
+  {id:'trap_score',      mode:'trap',   name:'Centurion',
+   desc:'Trap: reach a score of 150.',
+   skin:{id:'crimson', name:'Crimson', color:'#ff5a5a'}},
+  {id:'battle_streak',   mode:'battle', name:'Relentless',
+   desc:'Battle: capture 5 pieces in a row without a miss.',
+   skin:{id:'violet', name:'Violet', color:'#b070ff'}},
+  {id:'battle_marathon', mode:'battle', name:'Marathon',
+   desc:'Battle: hold one transformation for a full minute.',
+   skin:{id:'frost', name:'Frost', color:'#8fe0ff'}},
+  {id:'battle_polymorph',mode:'battle', name:'Shapeshifter',
+   desc:'Battle: transform into all four forms, twice each.',
+   skin:{id:'magma', name:'Magma', color:'#ff8a3c'}}
+];
+function achActive(){ return difficulty==='hard'||difficulty==='grandmaster'; }
+function loadAch(){ try{ (JSON.parse(localStorage.getItem('kg_ach')||'[]')||[]).forEach(function(id){unlockedAch[id]=true;}); }catch(e){} }
+function isAchUnlocked(id){ return !!unlockedAch[id]; }
+function unlockAch(id){
+  if(unlockedAch[id]) return;
+  unlockedAch[id]=true;
+  try{ localStorage.setItem('kg_ach',JSON.stringify(Object.keys(unlockedAch))); }catch(e){}
+  for(var i=0;i<ACHIEVEMENTS.length;i++) if(ACHIEVEMENTS[i].id===id){ showAchToast(ACHIEVEMENTS[i]); break; }
+}
+function getActiveSkin(){ try{ return localStorage.getItem('kg_skin')||'gold'; }catch(e){ return 'gold'; } }
+function setActiveSkin(id){ try{ localStorage.setItem('kg_skin',id); }catch(e){} activeSkinColor=skinColorById(id); }
+function skinColorById(id){
+  if(id==='gold') return DEFAULT_SKIN.color;
+  for(var i=0;i<ACHIEVEMENTS.length;i++) if(ACHIEVEMENTS[i].skin.id===id) return ACHIEVEMENTS[i].skin.color;
+  return DEFAULT_SKIN.color;
+}
+// detect form transitions for the marathon / shapeshifter achievements
+function trackPieceChange(now){
+  if(!achActive()) return;
+  if(playerPiece!==achPrevPiece){
+    if(playerPiece==='knight'){ achXformStart=0; }
+    else {
+      if(achPrevPiece==='knight') achXformStart=now;     // a fresh transform began
+      if(achXformCounts[playerPiece]!==undefined){
+        achXformCounts[playerPiece]++;
+        if(achXformCounts.rook>=2&&achXformCounts.bishop>=2&&achXformCounts.queen>=2&&achXformCounts.nightrider>=2) unlockAch('battle_polymorph');
+      }
+    }
+    achPrevPiece=playerPiece;
+  }
+}
+function showAchToast(a){
+  var t=document.getElementById('ach-toast'); if(!t) return;
+  t.innerHTML='🏆 <b>'+a.name+'</b> unlocked'+'<br><span style="color:'+a.skin.color+'">'+a.skin.name+' skin earned</span>';
+  t.style.display='block';
+  requestAnimationFrame(function(){ t.style.opacity='1'; });
+  clearTimeout(t._timer);
+  t._timer=setTimeout(function(){ t.style.opacity='0'; setTimeout(function(){t.style.display='none';},400); },3600);
+}
+function openAch(){ hideAll(); renderAch(); showScreen('ach-screen'); }
+function achRow(skinId,title,desc,color,unlocked,equipped){
+  var glyph=unlocked?'♞':'🔒';
+  var ctrl = unlocked
+    ? (equipped?'<span class="ach-eq">Equipped</span>':'<button class="ach-use" onclick="equipSkin(\''+skinId+'\')">Use</button>')
+    : '<span class="ach-lock">Locked</span>';
+  return '<div class="ach-row'+(unlocked?'':' ach-dim')+'">'+
+    '<span class="ach-glyph" style="color:'+(unlocked?color:'#566')+'">'+glyph+'</span>'+
+    '<div class="ach-meta"><div class="ach-title">'+title+'</div><div class="ach-desc">'+desc+'</div></div>'+
+    ctrl+'</div>';
+}
+function renderAch(){
+  var active=getActiveSkin(), html='';
+  html+=achRow('gold','Classic Gold','The piece you start with.','#f0c040',true,active==='gold');
+  for(var i=0;i<ACHIEVEMENTS.length;i++){
+    var a=ACHIEVEMENTS[i];
+    html+=achRow(a.skin.id,a.skin.name+' — '+a.name,a.desc,a.skin.color,isAchUnlocked(a.id),active===a.skin.id);
+  }
+  document.getElementById('ach-list').innerHTML=html;
+}
+function equipSkin(id){ setActiveSkin(id); renderAch(); }
 
 // ── Leaderboard (Supabase online + local Personal) ─────────────────────────
 var lbCache={}, lbLoading=false;
@@ -1519,6 +1681,17 @@ function renderLB(){
 
 function backToMenu(){hideAll();showScreen('menu-screen');refreshMenuName();}
 
+function openSettings(){
+  hideAll();
+  var name=getSavedName(), line=document.getElementById('settings-name-line');
+  if(line){
+    if(name && isNameAllowed(name)){ line.innerHTML='Playing as <b style="color:#f0c040;">'+name+'</b>'; line.style.display='block'; }
+    else line.style.display='none';
+  }
+  showScreen('settings-screen');
+}
+function settingsChangeName(){ hideAll(); showScreen('menu-screen'); menuEditName(false); }
+
 // ── Bug report + Patch notes ────────────────────────────────────────────────
 function openBugReport(){
   if(/YOUR-FORM-ID/.test(BUG_REPORT_URL)){ alert('Set BUG_REPORT_URL to your Google Form link.'); return; }
@@ -1598,10 +1771,14 @@ function saveCompose(){
 }
 function showScreen(id){document.getElementById(id).style.display='flex';}
 function hideAll(){
-  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose','howto-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['menu-screen','pause-screen','lb-screen','name-screen','trapped-screen','patch-screen','patch-compose','howto-screen','ach-screen','settings-screen'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('hud').style.display='none';
 }
-window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName(); });
+window.addEventListener('load',function(){ init(); loadWordlist(); refreshMenuName();
+  loadAch(); activeSkinColor=skinColorById(getActiveSkin());
+  var seenIntro=false; try{ seenIntro=!!localStorage.getItem('kg_seen_intro'); }catch(e){}
+  if(!seenIntro) openHowto({pages:[0,1],context:'intro',firstTime:true});   // basics on first launch
+});
 </script>
 </body>
 </html>
